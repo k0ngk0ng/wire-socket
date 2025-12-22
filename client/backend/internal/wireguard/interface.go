@@ -2,8 +2,10 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -76,13 +78,13 @@ func (i *Interface) Configure(config *WGConfig) error {
 	}
 
 	// Parse endpoint
-	endpoint, err := wgtypes.ParseEndpoint(config.Peer.Endpoint)
+	endpoint, err := net.ResolveUDPAddr("udp", config.Peer.Endpoint)
 	if err != nil {
 		return fmt.Errorf("failed to parse endpoint: %w", err)
 	}
 
 	// Parse allowed IPs
-	allowedIPs, err := wgtypes.ParseIPNets(config.Peer.AllowedIPs)
+	allowedIPs, err := parseAllowedIPs(config.Peer.AllowedIPs)
 	if err != nil {
 		return fmt.Errorf("failed to parse allowed IPs: %w", err)
 	}
@@ -137,19 +139,19 @@ func (i *Interface) GetStats() (Stats, error) {
 	elapsed := now.Sub(i.lastUpdate).Seconds()
 
 	if elapsed > 0 {
-		rxSpeed := uint64(float64(peer.ReceiveBytes - i.lastStats.RxBytes) / elapsed)
-		txSpeed := uint64(float64(peer.TransmitBytes - i.lastStats.TxBytes) / elapsed)
+		rxSpeed := uint64(float64(uint64(peer.ReceiveBytes)-i.lastStats.RxBytes) / elapsed)
+		txSpeed := uint64(float64(uint64(peer.TransmitBytes)-i.lastStats.TxBytes) / elapsed)
 
 		i.stats = Stats{
-			RxBytes: peer.ReceiveBytes,
-			TxBytes: peer.TransmitBytes,
+			RxBytes: uint64(peer.ReceiveBytes),
+			TxBytes: uint64(peer.TransmitBytes),
 			RxSpeed: rxSpeed,
 			TxSpeed: txSpeed,
 		}
 
 		i.lastStats = Stats{
-			RxBytes: peer.ReceiveBytes,
-			TxBytes: peer.TransmitBytes,
+			RxBytes: uint64(peer.ReceiveBytes),
+			TxBytes: uint64(peer.TransmitBytes),
 		}
 		i.lastUpdate = now
 	}
@@ -168,6 +170,23 @@ func (i *Interface) Destroy() error {
 
 // Platform-specific interface creation functions
 // These are simplified placeholders - in production, you'd use proper implementations
+
+// parseAllowedIPs parses a comma-separated list of CIDR notations
+func parseAllowedIPs(s string) ([]net.IPNet, error) {
+	var result []net.IPNet
+	for _, cidr := range strings.Split(s, ",") {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CIDR %q: %w", cidr, err)
+		}
+		result = append(result, *ipnet)
+	}
+	return result, nil
+}
 
 func createInterface(name string) error {
 	switch runtime.GOOS {
