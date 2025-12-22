@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
-	"vpn-server/internal/database"
+	"wire-socket-server/internal/database"
 
 	"gorm.io/gorm"
 )
