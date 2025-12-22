@@ -1,0 +1,130 @@
+# Binaries and executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+wire-socket-server
+wire-socket-client
+vpn-server
+vpn-client
+
+# Go
+*.test
+*.out
+vendor/
+go.work
+go.work.sum
+
+# Build artifacts
+dist/
+build/
+out/
+*.app
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
+*.zip
+*.tar.gz
+
+# Frontend dependencies and build
+node_modules/
+.npm/
+.cache/
+.vite/
+.parcel-cache/
+
+# Downloaded resources and binaries
+client/frontend/resources/bin/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Configuration (may contain secrets)
+config.local.yaml
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+coverage/
+*.cover
+.hypothesis/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# macOS specific
+*.app/
+
+# Windows specific
+*.msi
+*.msm
+*.msp
+
+# System service files
+*.service
+*.plist
+*.xml
+
+# Certificates and keys (security)
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Electron specific
+.cache-electron-builder/
+
+# Go module cache
+*.sum.lock

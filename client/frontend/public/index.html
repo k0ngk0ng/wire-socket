@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VPN Client</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 100%;
+      max-width: 500px;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    .status-indicator.disconnected {
+      background-color: #e74c3c;
+    }
+
+    .status-indicator.connected {
+      background-color: #2ecc71;
+    }
+
+    .status-indicator.connecting {
+      background-color: #f39c12;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(231, 76, 60, 0.4);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .status-box {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .status-item:last-child {
+      border-bottom: none;
+    }
+
+    .status-label {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .status-value {
+      color: #333;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .error-message {
+      background: #ffe6e6;
+      color: #c0392b;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 14px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .traffic-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .traffic-card {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .traffic-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+
+    .traffic-value {
+      font-size: 20px;
+      font-weight: bold;
+      color: #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <span class="status-indicator disconnected" id="statusIndicator"></span>
+      VPN Client
+    </h1>
+    <p class="subtitle" id="statusText">Disconnected</p>
+
+    <!-- Login Form -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label for="serverAddress">Server Address</label>
+        <input type="text" id="serverAddress" placeholder="vpn.example.com:8080" value="localhost:8080">
+      </div>
+
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="Enter your username" value="admin">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter your password" value="admin123">
+      </div>
+
+      <button class="btn btn-primary" id="connectBtn" onclick="connect()">
+        Connect to VPN
+      </button>
+
+      <div id="errorMessage" class="error-message hidden"></div>
+    </div>
+
+    <!-- Connected Status -->
+    <div id="connectedView" class="hidden">
+      <div class="status-box">
+        <div class="status-item">
+          <span class="status-label">Server</span>
+          <span class="status-value" id="connectedServer">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Assigned IP</span>
+          <span class="status-value" id="assignedIP">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Connected Since</span>
+          <span class="status-value" id="connectedSince">-</span>
+        </div>
+
+        <div class="traffic-stats">
+          <div class="traffic-card">
+            <div class="traffic-label">Download</div>
+            <div class="traffic-value" id="rxBytes">0 MB</div>
+          </div>
+          <div class="traffic-card">
+            <div class="traffic-label">Upload</div>
+            <div class="traffic-value" id="txBytes">0 MB</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-danger" onclick="disconnect()" style="margin-top: 20px;">
+        Disconnect
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const loginForm = document.getElementById('loginForm');
+    const connectedView = document.getElementById('connectedView');
+    const errorMessage = document.getElementById('errorMessage');
+    const connectBtn = document.getElementById('connectBtn');
+
+    let statusCheckInterval = null;
+
+    async function connect() {
+      const serverAddress = document.getElementById('serverAddress').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!serverAddress || !username || !password) {
+        showError('Please fill in all fields');
+        return;
+      }
+
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Connecting...';
+      hideError();
+
+      const result = await window.electronAPI.connect({
+        server_address: serverAddress,
+        username: username,
+        password: password
+      });
+
+      if (result.success) {
+        updateStatus('connecting');
+        startStatusCheck();
+      } else {
+        showError(result.error);
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect to VPN';
+      }
+    }
+
+    async function disconnect() {
+      const result = await window.electronAPI.disconnect();
+
+      if (result.success) {
+        updateStatus('disconnected');
+        stopStatusCheck();
+      } else {
+        showError(result.error);
+      }
+    }
+
+    async function checkStatus() {
+      const result = await window.electronAPI.getStatus();
+
+      if (result.success) {
+        const status = result.data;
+
+        if (status.state === 'connected') {
+          updateStatus('connected', status);
+        } else if (status.state === 'connecting') {
+          updateStatus('connecting');
+        } else if (status.state === 'failed') {
+          updateStatus('disconnected');
+          showError(status.error || 'Connection failed');
+          stopStatusCheck();
+        } else {
+          updateStatus('disconnected');
+        }
+      }
+    }
+
+    function updateStatus(state, data = null) {
+      statusIndicator.className = `status-indicator ${state}`;
+
+      if (state === 'connected' && data) {
+        statusText.textContent = 'Connected';
+        loginForm.classList.add('hidden');
+        connectedView.classList.remove('hidden');
+
+        document.getElementById('connectedServer').textContent = data.server_name || 'Unknown';
+        document.getElementById('assignedIP').textContent = data.assigned_ip || 'Unknown';
+
+        if (data.connected_since) {
+          const date = new Date(data.connected_since);
+          document.getElementById('connectedSince').textContent = date.toLocaleString();
+        }
+
+        document.getElementById('rxBytes').textContent = formatBytes(data.rx_bytes || 0);
+        document.getElementById('txBytes').textContent = formatBytes(data.tx_bytes || 0);
+      } else if (state === 'connecting') {
+        statusText.textContent = 'Connecting...';
+      } else {
+        statusText.textContent = 'Disconnected';
+        loginForm.classList.remove('hidden');
+        connectedView.classList.add('hidden');
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect to VPN';
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function showError(message) {
+      errorMessage.textContent = message;
+      errorMessage.classList.remove('hidden');
+    }
+
+    function hideError() {
+      errorMessage.classList.add('hidden');
+    }
+
+    function startStatusCheck() {
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+      }
+      statusCheckInterval = setInterval(checkStatus, 2000);
+    }
+
+    function stopStatusCheck() {
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = null;
+      }
+    }
+
+    // Check initial status
+    checkStatus();
+  </script>
+</body>
+</html>
