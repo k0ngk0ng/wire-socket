@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Master script to prepare all resources for packaging
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "🚀 Preparing WireSocket for packaging..."
+echo ""
+
+# Step 1: Download binaries
+echo "=========================================="
+echo "Step 1/3: Downloading third-party binaries"
+echo "=========================================="
+"$SCRIPT_DIR/download-binaries.sh"
+echo ""
+
+# Step 2: Download/build WireGuard components
+echo "=========================================="
+echo "Step 2/3: Setting up WireGuard components"
+echo "=========================================="
+"$SCRIPT_DIR/download-wireguard.sh"
+echo ""
+
+# Step 3: Build backend
+echo "=========================================="
+echo "Step 3/3: Building client backend"
+echo "=========================================="
+"$SCRIPT_DIR/build-backend.sh"
+echo ""
+
+echo "✅ All preparation completed!"
+echo ""
+echo "Now you can run:"
+echo "  npm run build       # Build for all platforms"
+echo "  npm run build:mac   # Build for macOS"
+echo "  npm run build:win   # Build for Windows"
+echo "  npm run build:linux # Build for Linux"

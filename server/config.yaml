@@ -1,0 +1,47 @@
+# VPN Server Configuration
+
+server:
+  # HTTP server address
+  address: "0.0.0.0:8080"
+
+  # HTTPS configuration (optional, comment out for HTTP only)
+  # tls:
+  #   cert_file: "/etc/letsencrypt/live/vpn.example.com/fullchain.pem"
+  #   key_file: "/etc/letsencrypt/live/vpn.example.com/privkey.pem"
+
+database:
+  # SQLite database path
+  path: "./vpn.db"
+
+  # Or use PostgreSQL (uncomment below and comment out SQLite)
+  # driver: "postgres"
+  # dsn: "host=localhost user=vpn password=vpn dbname=vpn port=5432 sslmode=disable"
+
+wireguard:
+  # WireGuard interface name
+  device_name: "wg0"
+
+  # Server listen port
+  listen_port: 51820
+
+  # VPN subnet (clients will get IPs from this range)
+  subnet: "10.0.0.0/24"
+
+  # DNS servers for clients
+  dns: "1.1.1.1,8.8.8.8"
+
+  # Server endpoint (public address that clients will connect to)
+  endpoint: "vpn.example.com:51820"
+
+  # Server private key (leave empty to generate new)
+  # private_key: ""
+
+  # Server public key (will be generated from private key)
+  # public_key: ""
+
+auth:
+  # JWT secret for token signing (change this in production!)
+  jwt_secret: "change-this-secret-in-production"
+
+# wstunnel server command (run separately)
+# wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
