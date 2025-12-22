@@ -64,8 +64,8 @@ Examples:
     $0 --all --platform all     # Build everything for all platforms
 
 Output:
-    Server:   ./server/wire-socket-server
-    Client:   ./client/frontend/dist/
+    Server:   ./server/dist/wire-socket-server
+    Client:   ./client/dist/
 EOF
 }
 
@@ -172,21 +172,24 @@ build_server() {
 
     cd "$SCRIPT_DIR/server"
 
+    # Create dist directory
+    mkdir -p dist
+
     if [[ "$SKIP_DEPS" == "false" ]]; then
         echo "Running go mod tidy..."
         go mod tidy
     fi
 
     echo "Compiling server..."
-    go build -o wire-socket-server cmd/server/main.go
+    go build -o dist/wire-socket-server cmd/server/main.go
 
-    print_success "Server built: ./server/wire-socket-server"
+    print_success "Server built: ./server/dist/wire-socket-server"
 
     # Show binary info
     if command -v file &> /dev/null; then
-        file wire-socket-server
+        file dist/wire-socket-server
     fi
-    ls -lh wire-socket-server
+    ls -lh dist/wire-socket-server
 }
 
 # Build client (frontend + bundled backend)
@@ -271,11 +274,11 @@ build_client() {
             ;;
     esac
 
-    print_success "Client built: ./client/frontend/dist/"
+    print_success "Client built: ./client/dist/"
 
     echo ""
     echo "Distribution packages:"
-    ls -lh "$SCRIPT_DIR/client/frontend/dist/" 2>/dev/null || true
+    ls -lh "$SCRIPT_DIR/client/dist/" 2>/dev/null || true
 }
 
 # Main execution
@@ -302,11 +305,11 @@ main() {
     echo "─────────────────────────────────────────────"
 
     if [[ "$BUILD_SERVER" == "true" ]]; then
-        echo "  Server:   ./server/wire-socket-server"
+        echo "  Server:   ./server/dist/wire-socket-server"
     fi
 
     if [[ "$BUILD_CLIENT" == "true" ]]; then
-        echo "  Client:   ./client/frontend/dist/"
+        echo "  Client:   ./client/dist/"
         echo ""
         echo "Note: The client package includes the backend service."
         echo "      Backend is bundled at: <app>/Contents/Resources/bin/"
