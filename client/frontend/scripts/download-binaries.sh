@@ -12,10 +12,11 @@ echo "📦 Downloading binaries for WireSocket..."
 
 # wstunnel version to download
 WSTUNNEL_VERSION="v10.1.4"
+WSTUNNEL_VERSION_NUM="${WSTUNNEL_VERSION#v}"  # Remove 'v' prefix for filenames
 
 # Download wstunnel for macOS
 echo "⬇️  Downloading wstunnel for macOS..."
-curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION}_darwin_amd64.tar.gz" -o /tmp/wstunnel-darwin.tar.gz
+curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION_NUM}_darwin_amd64.tar.gz" -o /tmp/wstunnel-darwin.tar.gz
 tar -xzf /tmp/wstunnel-darwin.tar.gz -C /tmp
 mv /tmp/wstunnel "$RESOURCES_DIR/darwin/wstunnel"
 chmod +x "$RESOURCES_DIR/darwin/wstunnel"
@@ -23,7 +24,7 @@ rm /tmp/wstunnel-darwin.tar.gz
 
 # Download wstunnel for macOS ARM64
 echo "⬇️  Downloading wstunnel for macOS ARM64..."
-curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION}_darwin_arm64.tar.gz" -o /tmp/wstunnel-darwin-arm64.tar.gz
+curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION_NUM}_darwin_arm64.tar.gz" -o /tmp/wstunnel-darwin-arm64.tar.gz
 tar -xzf /tmp/wstunnel-darwin-arm64.tar.gz -C /tmp
 mv /tmp/wstunnel "$RESOURCES_DIR/darwin/wstunnel-arm64"
 chmod +x "$RESOURCES_DIR/darwin/wstunnel-arm64"
@@ -31,7 +32,7 @@ rm /tmp/wstunnel-darwin-arm64.tar.gz
 
 # Download wstunnel for Linux
 echo "⬇️  Downloading wstunnel for Linux..."
-curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION}_linux_amd64.tar.gz" -o /tmp/wstunnel-linux.tar.gz
+curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION_NUM}_linux_amd64.tar.gz" -o /tmp/wstunnel-linux.tar.gz
 tar -xzf /tmp/wstunnel-linux.tar.gz -C /tmp
 mv /tmp/wstunnel "$RESOURCES_DIR/linux/wstunnel"
 chmod +x "$RESOURCES_DIR/linux/wstunnel"
@@ -39,10 +40,10 @@ rm /tmp/wstunnel-linux.tar.gz
 
 # Download wstunnel for Windows
 echo "⬇️  Downloading wstunnel for Windows..."
-curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION}_windows_amd64.zip" -o /tmp/wstunnel-windows.zip
-unzip -o /tmp/wstunnel-windows.zip -d /tmp
+curl -L "https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VERSION}/wstunnel_${WSTUNNEL_VERSION_NUM}_windows_amd64.tar.gz" -o /tmp/wstunnel-windows.tar.gz
+tar -xzf /tmp/wstunnel-windows.tar.gz -C /tmp
 mv /tmp/wstunnel.exe "$RESOURCES_DIR/win32/wstunnel.exe"
-rm /tmp/wstunnel-windows.zip
+rm /tmp/wstunnel-windows.tar.gz
 
 echo "✅ All binaries downloaded successfully!"
 echo ""
