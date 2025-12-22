@@ -3,9 +3,9 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"vpn-server/internal/auth"
-	"vpn-server/internal/database"
-	"vpn-server/internal/wireguard"
+	"wire-socket-server/internal/auth"
+	"wire-socket-server/internal/database"
+	"wire-socket-server/internal/wireguard"
 
 	"github.com/gin-gonic/gin"
 )

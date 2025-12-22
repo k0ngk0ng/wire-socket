@@ -3,7 +3,7 @@ package auth
 import (
 	"net/http"
 	"time"
-	"vpn-server/internal/database"
+	"wire-socket-server/internal/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
