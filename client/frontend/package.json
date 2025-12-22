@@ -34,19 +34,12 @@
     "appId": "com.wiresocket.app",
     "productName": "WireSocket",
     "directories": {
-      "output": "dist"
+      "output": "../dist"
     },
     "files": [
       "src/**/*",
       "public/**/*",
       "!resources/bin/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "resources/bin/${os}",
-        "to": "bin",
-        "filter": ["**/*"]
-      }
     ],
     "mac": {
       "target": [
@@ -58,13 +51,12 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "binaries": [
-        "resources/bin/darwin/wire-socket-client",
-        "resources/bin/darwin/wire-socket-client-arm64",
-        "resources/bin/darwin/wstunnel",
-        "resources/bin/darwin/wstunnel-arm64",
-        "resources/bin/darwin/wireguard-go",
-        "resources/bin/darwin/wireguard-go-arm64"
+      "extraResources": [
+        {
+          "from": "resources/bin/darwin",
+          "to": "bin",
+          "filter": ["**/*"]
+        }
       ]
     },
     "win": {
@@ -73,7 +65,14 @@
         "portable"
       ],
       "icon": "public/icon.ico",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "requireAdministrator",
+      "extraResources": [
+        {
+          "from": "resources/bin/win32",
+          "to": "bin",
+          "filter": ["**/*"]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -92,7 +91,14 @@
       "icon": "public/icon.png",
       "category": "Network",
       "maintainer": "WireSocket Team",
-      "synopsis": "Cross-platform VPN client with WireGuard"
+      "synopsis": "Cross-platform VPN client with WireGuard",
+      "extraResources": [
+        {
+          "from": "resources/bin/linux",
+          "to": "bin",
+          "filter": ["**/*"]
+        }
+      ]
     },
     "deb": {
       "depends": [
