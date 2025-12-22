@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -270,7 +271,7 @@ func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string,
 	}
 
 	// Send login request
-	resp, err := http.Post(apiURL, "application/json", io.NopCloser(jsonData))
+	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, "", err
 	}
