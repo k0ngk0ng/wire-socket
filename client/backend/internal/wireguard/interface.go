@@ -95,7 +95,7 @@ func (i *Interface) Configure(config *WGConfig) error {
 	// Build configuration
 	peerConfig := wgtypes.PeerConfig{
 		PublicKey:                   peerKey,
-		Endpoint:                    &endpoint,
+		Endpoint:                    endpoint,
 		AllowedIPs:                  allowedIPs,
 		PersistentKeepaliveInterval: &keepalive,
 	}
