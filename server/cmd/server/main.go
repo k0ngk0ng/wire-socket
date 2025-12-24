@@ -89,6 +89,26 @@ func main() {
 
 	log.Printf("WireGuard device %s configured successfully", config.WireGuard.DeviceName)
 
+	// Set address for config file persistence (use first IP from subnet as server address)
+	wgManager.SetAddress(config.WireGuard.Subnet)
+
+	// Load existing peers from config file (if any)
+	if err := wgManager.LoadPeersFromConfig(); err != nil {
+		log.Printf("Warning: failed to load peers from config file: %v", err)
+	} else {
+		existingConfig, _ := wgManager.LoadConfigFile()
+		if existingConfig != nil && len(existingConfig.Peers) > 0 {
+			log.Printf("Loaded %d peers from %s", len(existingConfig.Peers), wgManager.GetConfigPath())
+		}
+	}
+
+	// Save initial config (creates file if not exists)
+	if err := wgManager.SaveConfigFile(privateKey, config.WireGuard.Subnet, config.WireGuard.ListenPort); err != nil {
+		log.Printf("Warning: failed to save initial config: %v", err)
+	} else {
+		log.Printf("WireGuard config persisted to %s", wgManager.GetConfigPath())
+	}
+
 	// Create default server entry in database
 	if *initDB {
 		if err := initializeDatabase(db, config, publicKey); err != nil {
