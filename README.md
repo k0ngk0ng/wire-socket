@@ -1,6 +1,6 @@
 # WireSocket
 
-A modern, cross-platform VPN solution using WireGuard tunneled over WebSockets (via wstunnel) with an Electron frontend and Go backend.
+A modern, cross-platform VPN solution using WireGuard tunneled over WebSockets (via wstunnel) with an Electron desktop client and Go server.
 
 ## Features
 
@@ -10,29 +10,23 @@ A modern, cross-platform VPN solution using WireGuard tunneled over WebSockets (
 - **Auto-Reconnect**: Automatic reconnection on network changes
 - **Traffic Statistics**: Real-time upload/download monitoring
 - **Multi-Server Support**: Save and manage multiple VPN servers
-- **System Service**: Runs as a system service with proper privileges
+- **All-in-One Package**: Client bundles all dependencies (no manual setup)
 
 ## Architecture
 
 ### Components
 
-1. **Server (Go)**
+1. **Server (Go)** - Deployed on your VPN server
    - HTTP API for authentication and config generation
    - Dynamic WireGuard configuration with IP allocation
    - Database (SQLite/PostgreSQL) for user management
-   - Integration with wstunnel server
+   - Works with wstunnel server for WebSocket tunneling
 
-2. **Client Backend (Go)**
-   - System service (Windows Service, macOS LaunchDaemon, Linux systemd)
-   - WireGuard interface management
-   - wstunnel client integration
-   - Local HTTP API for Electron frontend
-
-3. **Client Frontend (Electron)**
-   - Modern, user-friendly interface
-   - Login and connection management
-   - Real-time status updates
-   - System tray integration
+2. **Client (Electron + Go)** - Installed on user devices
+   - Modern desktop UI with system tray integration
+   - Bundled backend service for WireGuard management
+   - Includes wstunnel and wireguard-go binaries
+   - Auto-installs as system service on first run
 
 ### Traffic Flow
 
@@ -52,26 +46,11 @@ WireGuard Server (decrypted)
 Internet
 ```
 
-## Prerequisites
-
-### Server
-
-- Go 1.21 or higher
-- WireGuard kernel module or wireguard-go
-- wstunnel binary ([download](https://github.com/erebe/wstunnel/releases))
-- Root/admin privileges
-
-### Client
-
-- Go 1.21 or higher (for building)
-- Node.js 18+ and npm (for Electron)
-- WireGuard tools
-- wstunnel binary
-- Root/admin privileges (for VPN operations)
-
 ## Quick Start
 
 ### Server Setup
+
+**Prerequisites:** Go 1.21+, root privileges
 
 ```bash
 # Clone and build
@@ -80,7 +59,7 @@ cd wire-socket/server
 go mod tidy
 go build -o wire-socket-server cmd/server/main.go
 
-# Configure (edit config.yaml with your settings)
+# Configure (edit config.yaml with your server IP)
 # Initialize database (creates admin/admin123 user)
 sudo ./wire-socket-server -init-db
 
@@ -91,68 +70,34 @@ sudo ./wire-socket-server
 sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
 ```
 
-### Client Setup
+### Client Installation
 
-```bash
-# Build client backend
-cd client/backend
-go mod tidy
-go build -o wire-socket-client cmd/client/main.go
-
-# Install and start as system service
-sudo ./wire-socket-client -service install
-
-# Linux
-sudo systemctl start WireSocketClient && sudo systemctl enable WireSocketClient
-
-# macOS
-sudo launchctl load /Library/LaunchDaemons/WireSocketClient.plist
-
-# Windows (as Administrator)
-# .\wire-socket-client.exe -service install
-# net start WireSocketClient
-
-# Build and run frontend
-cd ../frontend
-npm install
-npm start
-```
-
-### Using the Client
-
-1. Launch the Electron app
-2. Enter server address (e.g., `your-server-ip:8080`)
-3. Enter username and password (default: `admin` / `admin123`)
-4. Click "Connect to VPN"
-5. View assigned IP, traffic stats, and connection duration
-6. Click "Disconnect" to terminate
-
-## Building Distribution Packages
-
-WireSocket supports one-click packaging with all required dependencies bundled (no manual WireGuard or wstunnel installation needed):
+Download the pre-built package for your platform from [Releases](../../releases), or build from source:
 
 ```bash
 cd client/frontend
-
-# Build for all platforms (auto-downloads dependencies)
-npm run build
-
-# Build for specific platform
+npm install
 npm run build:mac    # macOS (.dmg, .zip)
 npm run build:win    # Windows (.exe, portable)
 npm run build:linux  # Linux (.AppImage, .deb, .rpm)
 ```
 
-**Package includes:**
-- Electron frontend UI
-- Go client backend service
-- wstunnel binary (all platforms)
+Output files are in `client/dist/` directory.
+
+The package includes everything needed:
+- Electron desktop UI
+- Go backend service
+- wstunnel binary
 - WireGuard components (wireguard-go)
-- Auto service installation scripts
 
-Output files are located in `client/dist/` directory.
+### Using the Client
 
-See [client/frontend/PACKAGING.md](client/frontend/PACKAGING.md) for detailed packaging instructions.
+1. Install and launch WireSocket
+2. Enter server address (e.g., `your-server-ip:8080`)
+3. Enter username and password (default: `admin` / `admin123`)
+4. Click "Connect to VPN"
+5. View assigned IP, traffic stats, and connection duration
+6. Click "Disconnect" to terminate
 
 ## Configuration
 
@@ -178,8 +123,8 @@ auth:
 ### Client Configuration
 
 Client settings are stored in:
-- **Linux/macOS**: `~/.vpn-client/`
-- **Windows**: `%USERPROFILE%\.vpn-client\`
+- **Linux/macOS**: `~/.wire-socket/`
+- **Windows**: `%USERPROFILE%\.wire-socket\`
 
 ## Troubleshooting
 
@@ -197,22 +142,6 @@ sudo modprobe wireguard  # Linux
 **Solution**: Run server with sudo/admin privileges
 
 ### Client Issues
-
-**Problem**: "Failed to create WireGuard interface"
-
-**Solution**:
-- Ensure client backend service is running with admin privileges
-- Check WireGuard tools are installed
-- On Linux: `sudo apt install wireguard-tools`
-- On macOS: `brew install wireguard-tools`
-
-**Problem**: "wstunnel binary not found"
-
-**Solution**: Install wstunnel:
-```bash
-# Download from https://github.com/erebe/wstunnel/releases
-# Place in /usr/local/bin/ or add to PATH
-```
 
 **Problem**: "Connection failed" or "Authentication failed"
 
@@ -241,13 +170,13 @@ Server:
 sudo ./wire-socket-server  # Logs to stdout
 ```
 
-Client backend:
+Client:
 ```bash
 # Linux
 journalctl -u WireSocketClient -f
 
 # macOS
-tail -f /var/log/system.log | grep VPN
+tail -f /var/log/system.log | grep WireSocket
 ```
 
 ## Security Considerations
@@ -265,15 +194,12 @@ tail -f /var/log/system.log | grep VPN
 
 ```
 wire-socket/
-├── server/               # Go server backend
-│   ├── cmd/server/       # Server entry point
+├── server/               # Go server
+│   ├── cmd/server/       # Entry point
 │   ├── internal/         # Internal packages
-│   └── config.yaml       # Server configuration
-└── client/               # Client application
-    ├── backend/          # Go client backend
-    │   ├── cmd/client/   # Client entry point
-    │   └── internal/     # Internal packages
-    └── frontend/         # Electron frontend
+│   └── config.yaml       # Configuration
+└── client/
+    └── frontend/         # Electron app (includes Go backend)
         ├── src/main/     # Main process
         ├── src/preload/  # Preload scripts
         └── public/       # HTML/assets
@@ -287,18 +213,14 @@ cd server
 go build -o wire-socket-server cmd/server/main.go
 ```
 
-**Client Backend:**
-```bash
-cd client/backend
-go build -o wire-socket-client cmd/client/main.go
-```
-
-**Client Frontend:**
+**Client:**
 ```bash
 cd client/frontend
 npm install
 npm run build
 ```
+
+See [client/frontend/PACKAGING.md](client/frontend/PACKAGING.md) for detailed build instructions.
 
 ## API Documentation
 
