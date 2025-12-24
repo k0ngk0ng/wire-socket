@@ -69,28 +69,96 @@ Internet
 - wstunnel binary
 - Root/admin privileges (for VPN operations)
 
-## Installation
+## Quick Start
 
-### 1. Clone the Repository
+### Server Setup
 
 ```bash
+# Clone and build
 git clone <repository-url> wire-socket
-cd wire-socket
-```
-
-### 2. Server Setup
-
-#### Build the Server
-
-```bash
-cd server
+cd wire-socket/server
 go mod tidy
 go build -o wire-socket-server cmd/server/main.go
+
+# Configure (edit config.yaml with your settings)
+# Initialize database (creates admin/admin123 user)
+sudo ./wire-socket-server -init-db
+
+# Start server
+sudo ./wire-socket-server
+
+# Start wstunnel server (in separate terminal)
+sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
 ```
 
-#### Configure the Server
+### Client Setup
 
-Edit `config.yaml`:
+```bash
+# Build client backend
+cd client/backend
+go mod tidy
+go build -o wire-socket-client cmd/client/main.go
+
+# Install and start as system service
+sudo ./wire-socket-client -service install
+
+# Linux
+sudo systemctl start VPNClient && sudo systemctl enable VPNClient
+
+# macOS
+sudo launchctl load /Library/LaunchDaemons/VPNClient.plist
+
+# Windows (as Administrator)
+# .\wire-socket-client.exe -service install
+# net start VPNClient
+
+# Build and run frontend
+cd ../frontend
+npm install
+npm start
+```
+
+### Using the Client
+
+1. Launch the Electron app
+2. Enter server address (e.g., `your-server-ip:8080`)
+3. Enter username and password (default: `admin` / `admin123`)
+4. Click "Connect to VPN"
+5. View assigned IP, traffic stats, and connection duration
+6. Click "Disconnect" to terminate
+
+## Building Distribution Packages
+
+WireSocket supports one-click packaging with all required dependencies bundled (no manual WireGuard or wstunnel installation needed):
+
+```bash
+cd client/frontend
+
+# Build for all platforms (auto-downloads dependencies)
+npm run build
+
+# Build for specific platform
+npm run build:mac    # macOS (.dmg, .zip)
+npm run build:win    # Windows (.exe, portable)
+npm run build:linux  # Linux (.AppImage, .deb, .rpm)
+```
+
+**Package includes:**
+- Electron frontend UI
+- Go client backend service
+- wstunnel binary (all platforms)
+- WireGuard components (wireguard-go)
+- Auto service installation scripts
+
+Output files are located in `client/dist/` directory.
+
+See [client/frontend/PACKAGING.md](client/frontend/PACKAGING.md) for detailed packaging instructions.
+
+## Configuration
+
+### Server Configuration
+
+Edit `server/config.yaml`:
 
 ```yaml
 server:
@@ -106,162 +174,6 @@ wireguard:
 auth:
   jwt_secret: "change-this-to-a-random-secret"
 ```
-
-#### Initialize Database
-
-```bash
-sudo ./wire-socket-server -init-db
-```
-
-This creates:
-- Default admin user: `admin` / `admin123` (change immediately!)
-- Database schema
-- Server configuration
-
-#### Run the Server
-
-```bash
-sudo ./wire-socket-server
-```
-
-#### Start wstunnel Server
-
-```bash
-# Install wstunnel
-wget https://github.com/erebe/wstunnel/releases/latest/download/wstunnel_linux_amd64
-chmod +x wstunnel_linux_amd64
-sudo mv wstunnel_linux_amd64 /usr/local/bin/wstunnel
-
-# Run wstunnel server
-sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
-```
-
-### 3. Client Backend Setup
-
-#### Build the Client Backend
-
-```bash
-cd ../client/backend
-go mod tidy
-go build -o wire-socket-client cmd/client/main.go
-```
-
-#### Install as System Service
-
-**Linux:**
-
-```bash
-sudo ./wire-socket-client -service install
-sudo systemctl start VPNClient
-sudo systemctl enable VPNClient
-```
-
-**macOS:**
-
-```bash
-sudo ./wire-socket-client -service install
-sudo launchctl load /Library/LaunchDaemons/VPNClient.plist
-```
-
-**Windows (as Administrator):**
-
-```powershell
-.\wire-socket-client.exe -service install
-net start VPNClient
-```
-
-### 4. Client Frontend Setup
-
-#### Install Dependencies
-
-```bash
-cd ../client/frontend
-npm install
-```
-
-#### Run in Development Mode
-
-```bash
-npm start
-```
-
-#### Build Distribution Packages
-
-WireSocket 现在支持一键打包，包含所有必需的依赖（无需手动安装 WireGuard 或 wstunnel）：
-
-```bash
-# 构建所有平台（自动下载依赖并打包）
-npm run build
-
-# 构建特定平台
-npm run build:mac    # macOS (.dmg, .zip)
-npm run build:win    # Windows (.exe, portable)
-npm run build:linux  # Linux (.AppImage, .deb, .rpm)
-```
-
-**打包内容**：
-- ✅ Electron 前端界面
-- ✅ Go 客户端后端服务
-- ✅ wstunnel 二进制文件（所有平台）
-- ✅ WireGuard 组件（wireguard-go）
-- ✅ 自动服务安装脚本
-
-输出文件位于 `client/dist/` 目录。
-
-详细打包说明请参考 [client/frontend/PACKAGING.md](client/frontend/PACKAGING.md)。
-
-## Usage
-
-### Starting the Server
-
-1. **Start the VPN server:**
-   ```bash
-   cd server
-   sudo ./wire-socket-server
-   ```
-
-2. **Start wstunnel server** (in a separate terminal):
-   ```bash
-   sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
-   ```
-
-### Using the Client
-
-1. **Ensure the client backend service is running:**
-   ```bash
-   # Linux
-   sudo systemctl status VPNClient
-
-   # macOS
-   sudo launchctl list | grep VPNClient
-
-   # Windows
-   sc query VPNClient
-   ```
-
-2. **Launch the Electron app:**
-   - Double-click the installed application, or
-   - Run `npm start` from the electron directory in development mode
-
-3. **Connect to VPN:**
-   - Enter server address (e.g., `your-server-ip:8080`)
-   - Enter username and password
-   - Click "Connect to VPN"
-
-4. **View Status:**
-   - Once connected, see assigned IP, traffic stats, and connection duration
-   - Click "Disconnect" to terminate the VPN connection
-
-## Configuration
-
-### Server Configuration
-
-Edit `server/config.yaml`:
-
-- **Server address**: HTTP API listen address
-- **WireGuard settings**: Interface name, subnet, DNS servers
-- **JWT secret**: Token signing key (change in production!)
-- **Database**: SQLite path or PostgreSQL DSN
 
 ### Client Configuration
 
@@ -309,9 +221,20 @@ sudo modprobe wireguard  # Linux
 - Check firewall rules (ports 8080, 443, 51820)
 - Verify credentials are correct
 
-### General Debugging
+### Checking Service Status
 
-**Enable verbose logging:**
+```bash
+# Linux
+sudo systemctl status VPNClient
+
+# macOS
+sudo launchctl list | grep VPNClient
+
+# Windows
+sc query VPNClient
+```
+
+### Viewing Logs
 
 Server:
 ```bash
