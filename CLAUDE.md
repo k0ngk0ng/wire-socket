@@ -210,9 +210,9 @@ sudo ./vpn-client -service install
 sudo ./vpn-client -service uninstall
 
 # Service control varies by platform:
-# Linux: systemctl start/stop VPNClient
-# macOS: launchctl load/unload VPNClient.plist
-# Windows: net start/stop VPNClient
+# Linux: systemctl start/stop WireSocketClient
+# macOS: launchctl load/unload WireSocketClient.plist
+# Windows: net start/stop WireSocketClient
 ```
 
 ## Database Schema

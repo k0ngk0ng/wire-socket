@@ -19,7 +19,7 @@ type Program struct {
 }
 
 func (p *Program) Start(s service.Service) error {
-	logger.Info("Starting VPN Client Service...")
+	logger.Info("Starting WireSocket Client Service...")
 	go p.run()
 	return nil
 }
@@ -40,12 +40,12 @@ func (p *Program) run() {
 		return
 	}
 
-	logger.Info("VPN Client Service started successfully")
+	logger.Info("WireSocket Client Service started successfully")
 	logger.Info("API server listening on localhost:41945")
 }
 
 func (p *Program) Stop(s service.Service) error {
-	logger.Info("Stopping VPN Client Service...")
+	logger.Info("Stopping WireSocket Client Service...")
 
 	// Stop API server
 	if p.apiServer != nil {
@@ -58,7 +58,7 @@ func (p *Program) Stop(s service.Service) error {
 		p.connMgr.Close()
 	}
 
-	logger.Info("VPN Client Service stopped")
+	logger.Info("WireSocket Client Service stopped")
 	return nil
 }
 
@@ -69,8 +69,8 @@ func main() {
 
 	// Service configuration
 	svcConfig := &service.Config{
-		Name:        "VPNClient",
-		DisplayName: "VPN Client Service",
+		Name:        "WireSocketClient",
+		DisplayName: "WireSocket Client Service",
 		Description: "Manages VPN connections with WireGuard and wstunnel",
 	}
 
