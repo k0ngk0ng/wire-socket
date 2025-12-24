@@ -25,8 +25,9 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 # Edit server/config.yaml (set your server IP and JWT secret)
 sudo ./server/dist/wire-socket-server -init-db   # First time only
 sudo ./server/dist/wire-socket-server
-sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
 ```
+
+The server includes a built-in WebSocket tunnel (port 443) - no external dependencies needed.
 
 ### Client
 

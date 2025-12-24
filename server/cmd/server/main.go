@@ -8,6 +8,7 @@ import (
 	"wire-socket-server/internal/api"
 	"wire-socket-server/internal/auth"
 	"wire-socket-server/internal/database"
+	"wire-socket-server/internal/tunnel"
 	"wire-socket-server/internal/wireguard"
 
 	"github.com/gin-gonic/gin"
@@ -40,6 +41,12 @@ type Config struct {
 	Auth struct {
 		JWTSecret string `yaml:"jwt_secret"`
 	} `yaml:"auth"`
+	Tunnel struct {
+		Enabled    bool   `yaml:"enabled"`
+		ListenAddr string `yaml:"listen_addr"`
+		TLSCert    string `yaml:"tls_cert"`
+		TLSKey     string `yaml:"tls_key"`
+	} `yaml:"tunnel"`
 }
 
 func main() {
@@ -150,9 +157,36 @@ func main() {
 	log.Printf("Starting VPN server on %s", config.Server.Address)
 	log.Printf("WireGuard endpoint: %s", config.WireGuard.Endpoint)
 	log.Printf("VPN subnet: %s", config.WireGuard.Subnet)
+
+	// Start built-in tunnel server if enabled
+	var tunnelServer *tunnel.Server
+	if config.Tunnel.Enabled {
+		targetAddr := fmt.Sprintf("127.0.0.1:%d", config.WireGuard.ListenPort)
+		tunnelServer = tunnel.NewServer(tunnel.Config{
+			ListenAddr: config.Tunnel.ListenAddr,
+			TargetAddr: targetAddr,
+			TLSCert:    config.Tunnel.TLSCert,
+			TLSKey:     config.Tunnel.TLSKey,
+		})
+
+		if err := tunnelServer.StartAsync(); err != nil {
+			log.Fatalf("Failed to start tunnel server: %v", err)
+		}
+		defer tunnelServer.Stop()
+
+		protocol := "WS"
+		if config.Tunnel.TLSCert != "" {
+			protocol = "WSS"
+		}
+		log.Printf("Built-in tunnel server started on %s (%s -> %s)", config.Tunnel.ListenAddr, protocol, targetAddr)
+	} else {
+		log.Println("")
+		log.Println("Built-in tunnel disabled. Make sure wstunnel server is running:")
+		log.Println("  wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820")
+	}
+
 	log.Println("")
-	log.Println("Server is ready! Make sure wstunnel server is running:")
-	log.Println("  wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820")
+	log.Println("Server is ready!")
 
 	if config.Server.TLS != nil {
 		if err := engine.RunTLS(config.Server.Address, config.Server.TLS.CertFile, config.Server.TLS.KeyFile); err != nil {

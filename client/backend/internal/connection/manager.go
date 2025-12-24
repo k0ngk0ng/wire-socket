@@ -130,15 +130,23 @@ func (m *Manager) doConnect(req ConnectRequest) {
 	m.token = token
 	m.assignedIP = wgConfig.Address
 
-	// Step 2: Start wstunnel client
-	wstunnelClient, err := wstunnel.NewClient(req.ServerAddress, 51820)
-	if err != nil {
-		m.setError(fmt.Errorf("failed to create wstunnel client: %w", err))
-		return
+	// Step 2: Start wstunnel client (built-in)
+	serverURL := fmt.Sprintf("wss://%s:443", req.ServerAddress)
+	// If server address already includes port, use it directly
+	if len(req.ServerAddress) > 0 && req.ServerAddress[0] >= '0' && req.ServerAddress[0] <= '9' {
+		// Looks like IP:port or just IP
+		parts := splitHostPort(req.ServerAddress)
+		serverURL = fmt.Sprintf("wss://%s:443", parts[0])
 	}
 
+	wstunnelClient := wstunnel.NewClient(wstunnel.Config{
+		LocalAddr: "127.0.0.1:51820",
+		ServerURL: serverURL,
+		Insecure:  true, // TODO: Add proper TLS verification
+	})
+
 	if err := wstunnelClient.Start(); err != nil {
-		m.setError(fmt.Errorf("failed to start wstunnel: %w", err))
+		m.setError(fmt.Errorf("failed to start tunnel client: %w", err))
 		return
 	}
 
@@ -384,5 +392,15 @@ func getConfigDir() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(home, ".vpn-client"), nil
+	return filepath.Join(home, ".wire-socket"), nil
+}
+
+// splitHostPort splits a host:port string
+func splitHostPort(addr string) []string {
+	for i := len(addr) - 1; i >= 0; i-- {
+		if addr[i] == ':' {
+			return []string{addr[:i], addr[i+1:]}
+		}
+	}
+	return []string{addr}
 }
