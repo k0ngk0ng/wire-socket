@@ -34,6 +34,12 @@ The server includes a built-in WebSocket tunnel (port 443) and userspace WireGua
 - `mode: "userspace"` - Pure Go implementation (default, no WireGuard installation required)
 - `mode: "kernel"` - Uses kernel WireGuard (requires wireguard-tools)
 
+**Deployment Options** (see [server/deploy/](server/deploy/)):
+- **systemd** - Linux service
+- **Docker** - Container deployment
+- **docker-compose** - Multi-container setup
+- **Kubernetes Helm** - Production clusters
+
 ### Client
 
 Download from [Releases](../../releases) or use built package in `client/dist/`.
@@ -46,7 +52,8 @@ Download from [Releases](../../releases) or use built package in `client/dist/`.
 ## Documentation
 
 - [CLAUDE.md](CLAUDE.md) - Development guide
-- [client/frontend/PACKAGING.md](client/frontend/PACKAGING.md) - Packaging details
+- [server/deploy/](server/deploy/) - Server deployment options
+- [client/frontend/PACKAGING.md](client/frontend/PACKAGING.md) - Client packaging details
 
 ## Security
 

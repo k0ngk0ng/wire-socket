@@ -1,0 +1,24 @@
+# VPN Server Configuration for Docker
+
+server:
+  address: "0.0.0.0:8080"
+
+database:
+  path: "/data/vpn.db"
+
+wireguard:
+  device_name: "wg0"
+  mode: "userspace"
+  listen_port: 51820
+  subnet: "10.0.0.0/24"
+  dns: "1.1.1.1,8.8.8.8"
+  # IMPORTANT: Set this to your public server IP or domain
+  endpoint: "your-server-ip:51820"
+
+auth:
+  # IMPORTANT: Change this in production!
+  jwt_secret: "change-this-secret-in-production"
+
+tunnel:
+  enabled: true
+  listen_addr: "0.0.0.0:443"

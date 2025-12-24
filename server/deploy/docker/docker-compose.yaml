@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  wire-socket-server:
+    build:
+      context: ../../..
+      dockerfile: server/Dockerfile
+    image: wire-socket-server:latest
+    container_name: wire-socket-server
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "8080:8080"     # HTTP API
+      - "443:443"       # WebSocket tunnel
+      - "51820:51820/udp"  # WireGuard UDP (optional)
+    volumes:
+      - ./data:/data
+      - wireguard-config:/etc/wireguard
+    environment:
+      - GIN_MODE=release
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - wire-socket-net
+
+volumes:
+  wireguard-config:
+
+networks:
+  wire-socket-net:
+    driver: bridge
