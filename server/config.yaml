@@ -43,5 +43,13 @@ auth:
   # JWT secret for token signing (change this in production!)
   jwt_secret: "change-this-secret-in-production"
 
-# wstunnel server command (run separately)
-# wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
+tunnel:
+  # Enable built-in WebSocket tunnel (replaces wstunnel)
+  enabled: true
+
+  # Tunnel listen address (WebSocket)
+  listen_addr: "0.0.0.0:443"
+
+  # TLS configuration for WSS (optional, for WS only leave empty)
+  # tls_cert: "/etc/letsencrypt/live/vpn.example.com/fullchain.pem"
+  # tls_key: "/etc/letsencrypt/live/vpn.example.com/privkey.pem"

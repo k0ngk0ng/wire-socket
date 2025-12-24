@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 WireSocket is a cross-platform VPN solution with three main components:
-- **Server** (Go): HTTP API + WireGuard + wstunnel server
-- **Client Backend** (Go): System service managing WireGuard interfaces and wstunnel client
+- **Server** (Go): HTTP API + WireGuard + built-in WebSocket tunnel
+- **Client Backend** (Go): System service managing WireGuard interfaces and WebSocket tunnel client
 - **Client Frontend** (Electron): Desktop UI for VPN management
 
 ## Build Commands
@@ -46,20 +46,15 @@ sudo ./wire-socket-server -init-db
 ```
 
 ### Start All Services
-The system requires 4 components running simultaneously:
+The system requires 3 components running simultaneously:
 
-1. **WireSocket Server**
+1. **WireSocket Server** (includes built-in tunnel on port 443)
    ```bash
    cd server
    sudo ./wire-socket-server
    ```
 
-2. **wstunnel Server** (separate terminal)
-   ```bash
-   sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
-   ```
-
-3. **WireSocket Client Service**
+2. **WireSocket Client Service**
    ```bash
    cd client/backend
    sudo ./wire-socket-client
@@ -70,7 +65,7 @@ The system requires 4 components running simultaneously:
    sudo launchctl load /Library/LaunchDaemons/WireSocketClient.plist  # macOS
    ```
 
-4. **Client Frontend**
+3. **Client Frontend**
    ```bash
    cd client/frontend
    npm start
@@ -120,9 +115,9 @@ The client backend runs as a system service (Windows Service/macOS LaunchDaemon/
   - Applies peer configurations from server
   - Monitors traffic statistics
 
-- **`internal/wstunnel/`**: wstunnel client management
-  - Spawns wstunnel process to tunnel WireGuard over WebSocket
-  - Manages wstunnel lifecycle
+- **`internal/wstunnel/`**: Built-in WebSocket tunnel client
+  - Pure Go implementation (no external binary)
+  - Tunnels WireGuard UDP over WebSocket
   - Handles reconnection on failure
 
 - **`internal/api/`**: Local HTTP API (port 41945)
@@ -152,9 +147,9 @@ The client backend runs as a system service (Windows Service/macOS LaunchDaemon/
 
 ```
 User App → WireGuard Interface (encrypted)
-         → wstunnel client (WebSocket wrapper)
+         → Built-in tunnel client (WebSocket wrapper)
          → Internet (WSS/WS)
-         → wstunnel server (unwraps WebSocket)
+         → Built-in tunnel server (unwraps WebSocket)
          → WireGuard Server (decrypts)
          → Internet
 ```
@@ -182,6 +177,12 @@ wireguard:
 
 auth:
   jwt_secret: "change-this"  # MUST be changed in production
+
+tunnel:
+  enabled: true              # Built-in WebSocket tunnel
+  listen_addr: "0.0.0.0:443"
+  # tls_cert: ""             # Optional: for WSS
+  # tls_key: ""
 ```
 
 ## Important Implementation Details
@@ -245,7 +246,7 @@ curl http://127.0.0.1:41945/health
 sudo wg show
 
 # Check running processes
-ps aux | grep -E "vpn-server|vpn-client|wstunnel"
+ps aux | grep -E "wire-socket-server|wire-socket-client"
 ```
 
 ## Common Development Tasks
@@ -300,15 +301,9 @@ sudo ./wire-socket-client  # Logs to stdout
 **"Permission denied"**
 - Run with sudo: `sudo ./wire-socket-server` or `sudo ./wire-socket-client`
 
-**"wstunnel binary not found"**
-- Download from: https://github.com/erebe/wstunnel/releases
-- Place in `/usr/local/bin/wstunnel`
-- Verify: `which wstunnel`
-
 **"Connection failed"**
 - Ensure server is running: `ps aux | grep wire-socket-server`
-- Check wstunnel: `ps aux | grep wstunnel`
-- Verify ports open: 8080 (API), 443 (wstunnel), 51820 (WireGuard UDP)
+- Verify ports open: 8080 (API), 443 (tunnel), 51820 (WireGuard UDP)
 - Check credentials: default is admin/admin123
 
 ## Security Notes
@@ -316,6 +311,5 @@ sudo ./wire-socket-client  # Logs to stdout
 - Change default admin password immediately after first login
 - Generate strong JWT secret (32+ random characters)
 - Use HTTPS/TLS in production (configure in config.yaml)
-- Keep wstunnel updated
 - Private keys stored encrypted at rest
 - JWT tokens have expiration
