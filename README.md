@@ -11,46 +11,31 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 
 ## Quick Start
 
+### Build
+
+```bash
+./build.sh --all            # Build server + client
+./build.sh --server         # Server only
+./build.sh --client -p mac  # Client for macOS (or linux/win/all)
+```
+
 ### Server
 
 ```bash
-cd server
-go build -o wire-socket-server cmd/server/main.go
-sudo ./wire-socket-server -init-db   # First time only
-sudo ./wire-socket-server
-
-# In separate terminal
+# Edit server/config.yaml (set your server IP and JWT secret)
+sudo ./server/dist/wire-socket-server -init-db   # First time only
+sudo ./server/dist/wire-socket-server
 sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
 ```
 
-Edit `server/config.yaml` to set your server IP and JWT secret.
-
 ### Client
 
-Download from [Releases](../../releases), or build:
-
-```bash
-./build.sh --client --platform mac   # or linux/win/all
-```
-
-Output: `client/dist/`
-
-### Usage
+Download from [Releases](../../releases) or use built package in `client/dist/`.
 
 1. Launch WireSocket
 2. Enter server address (e.g., `your-server-ip:8080`)
 3. Login (default: `admin` / `admin123`)
 4. Click "Connect"
-
-## Build
-
-```bash
-./build.sh --help           # Show all options
-./build.sh --all            # Build server + client
-./build.sh --server         # Server only
-./build.sh --client         # Client only
-./build.sh --client -p all  # Client for all platforms
-```
 
 ## Documentation
 
