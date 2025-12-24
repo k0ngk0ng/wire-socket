@@ -103,14 +103,14 @@ go build -o wire-socket-client cmd/client/main.go
 sudo ./wire-socket-client -service install
 
 # Linux
-sudo systemctl start VPNClient && sudo systemctl enable VPNClient
+sudo systemctl start WireSocketClient && sudo systemctl enable WireSocketClient
 
 # macOS
-sudo launchctl load /Library/LaunchDaemons/VPNClient.plist
+sudo launchctl load /Library/LaunchDaemons/WireSocketClient.plist
 
 # Windows (as Administrator)
 # .\wire-socket-client.exe -service install
-# net start VPNClient
+# net start WireSocketClient
 
 # Build and run frontend
 cd ../frontend
@@ -225,13 +225,13 @@ sudo modprobe wireguard  # Linux
 
 ```bash
 # Linux
-sudo systemctl status VPNClient
+sudo systemctl status WireSocketClient
 
 # macOS
-sudo launchctl list | grep VPNClient
+sudo launchctl list | grep WireSocketClient
 
 # Windows
-sc query VPNClient
+sc query WireSocketClient
 ```
 
 ### Viewing Logs
@@ -244,7 +244,7 @@ sudo ./wire-socket-server  # Logs to stdout
 Client backend:
 ```bash
 # Linux
-journalctl -u VPNClient -f
+journalctl -u WireSocketClient -f
 
 # macOS
 tail -f /var/log/system.log | grep VPN
