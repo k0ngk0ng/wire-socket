@@ -85,7 +85,7 @@ cd wire-socket
 ```bash
 cd server
 go mod tidy
-go build -o vpn-server cmd/server/main.go
+go build -o wire-socket-server cmd/server/main.go
 ```
 
 #### Configure the Server
@@ -110,7 +110,7 @@ auth:
 #### Initialize Database
 
 ```bash
-sudo ./vpn-server -init-db
+sudo ./wire-socket-server -init-db
 ```
 
 This creates:
@@ -121,7 +121,7 @@ This creates:
 #### Run the Server
 
 ```bash
-sudo ./vpn-server
+sudo ./wire-socket-server
 ```
 
 #### Start wstunnel Server
@@ -143,7 +143,7 @@ sudo wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820
 ```bash
 cd ../client/backend
 go mod tidy
-go build -o vpn-client cmd/client/main.go
+go build -o wire-socket-client cmd/client/main.go
 ```
 
 #### Install as System Service
@@ -151,7 +151,7 @@ go build -o vpn-client cmd/client/main.go
 **Linux:**
 
 ```bash
-sudo ./vpn-client -service install
+sudo ./wire-socket-client -service install
 sudo systemctl start VPNClient
 sudo systemctl enable VPNClient
 ```
@@ -159,14 +159,14 @@ sudo systemctl enable VPNClient
 **macOS:**
 
 ```bash
-sudo ./vpn-client -service install
+sudo ./wire-socket-client -service install
 sudo launchctl load /Library/LaunchDaemons/VPNClient.plist
 ```
 
 **Windows (as Administrator):**
 
 ```powershell
-.\vpn-client.exe -service install
+.\wire-socket-client.exe -service install
 net start VPNClient
 ```
 
@@ -206,7 +206,7 @@ npm run build:linux  # Linux (.AppImage, .deb, .rpm)
 - ✅ WireGuard 组件（wireguard-go）
 - ✅ 自动服务安装脚本
 
-输出文件位于 `client/frontend/dist/` 目录。
+输出文件位于 `client/dist/` 目录。
 
 详细打包说明请参考 [client/frontend/PACKAGING.md](client/frontend/PACKAGING.md)。
 
@@ -217,7 +217,7 @@ npm run build:linux  # Linux (.AppImage, .deb, .rpm)
 1. **Start the VPN server:**
    ```bash
    cd server
-   sudo ./vpn-server
+   sudo ./wire-socket-server
    ```
 
 2. **Start wstunnel server** (in a separate terminal):
@@ -315,7 +315,7 @@ sudo modprobe wireguard  # Linux
 
 Server:
 ```bash
-sudo ./vpn-server  # Logs to stdout
+sudo ./wire-socket-server  # Logs to stdout
 ```
 
 Client backend:
@@ -361,13 +361,13 @@ wire-socket/
 **Server:**
 ```bash
 cd server
-go build -o vpn-server cmd/server/main.go
+go build -o wire-socket-server cmd/server/main.go
 ```
 
 **Client Backend:**
 ```bash
 cd client/backend
-go build -o vpn-client cmd/client/main.go
+go build -o wire-socket-client cmd/client/main.go
 ```
 
 **Client Frontend:**
