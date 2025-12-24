@@ -37,6 +37,7 @@ type Config struct {
 		Endpoint   string `yaml:"endpoint"`
 		PrivateKey string `yaml:"private_key"`
 		PublicKey  string `yaml:"public_key"`
+		Mode       string `yaml:"mode"` // "kernel" or "userspace"
 	} `yaml:"wireguard"`
 	Auth struct {
 		JWTSecret string `yaml:"jwt_secret"`
@@ -68,14 +69,23 @@ func main() {
 
 	log.Println("Database initialized successfully")
 
+	// Determine WireGuard mode
+	wgMode := wireguard.Mode(config.WireGuard.Mode)
+	if wgMode == "" {
+		wgMode = wireguard.ModeKernel // Default to kernel mode
+	}
+
 	// Initialize WireGuard manager
-	wgManager, err := wireguard.NewManager(config.WireGuard.DeviceName)
+	wgManager, err := wireguard.NewManagerWithConfig(wireguard.ManagerConfig{
+		DeviceName: config.WireGuard.DeviceName,
+		Mode:       wgMode,
+	})
 	if err != nil {
 		log.Fatalf("Failed to initialize WireGuard manager: %v", err)
 	}
 	defer wgManager.Close()
 
-	log.Println("WireGuard manager initialized successfully")
+	log.Printf("WireGuard manager initialized successfully (mode: %s)", wgMode)
 
 	// Generate or load WireGuard server keys
 	privateKey, publicKey := config.WireGuard.PrivateKey, config.WireGuard.PublicKey

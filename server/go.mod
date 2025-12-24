@@ -1,16 +1,19 @@
 module wire-socket-server
 
-go 1.25.3
+go 1.24.0
 
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/gorilla/websocket v1.5.1
 	golang.org/x/crypto v0.46.0
-	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
+	wire-socket/pkg/wireguard v0.0.0
 )
+
+replace wire-socket/pkg/wireguard => ../pkg/wireguard
 
 require (
 	github.com/bytedance/sonic v1.14.0 // indirect
@@ -24,7 +27,6 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/native v1.1.0 // indirect
@@ -51,6 +53,8 @@ require (
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
+	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 )
