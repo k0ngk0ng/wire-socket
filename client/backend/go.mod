@@ -1,12 +1,15 @@
 module wire-socket-client
 
-go 1.25.3
+go 1.23.0
 
 require (
 	github.com/gin-gonic/gin v1.11.0
+	github.com/gorilla/websocket v1.5.1
 	github.com/kardianos/service v1.2.4
-	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
+	wire-socket/pkg/wireguard v0.0.0
 )
+
+replace wire-socket/pkg/wireguard => ../../pkg/wireguard
 
 require (
 	github.com/bytedance/sonic v1.14.0 // indirect
@@ -20,7 +23,6 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -45,6 +47,8 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/tools v0.34.0 // indirect
+	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 )

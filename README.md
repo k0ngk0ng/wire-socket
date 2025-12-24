@@ -5,6 +5,7 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 ## Features
 
 - **Cross-Platform**: macOS, Windows, Linux
+- **Zero Dependencies**: Pure Go userspace WireGuard - no kernel modules or external tools required
 - **Secure**: WireGuard encryption with WebSocket tunneling
 - **All-in-One**: Client bundles all dependencies
 - **Modern UI**: Electron desktop app with system tray
@@ -27,7 +28,11 @@ sudo ./server/dist/wire-socket-server -init-db   # First time only
 sudo ./server/dist/wire-socket-server
 ```
 
-The server includes a built-in WebSocket tunnel (port 443) - no external dependencies needed.
+The server includes a built-in WebSocket tunnel (port 443) and userspace WireGuard - no external dependencies needed.
+
+**WireGuard Mode** (in `config.yaml`):
+- `mode: "userspace"` - Pure Go implementation (default, no WireGuard installation required)
+- `mode: "kernel"` - Uses kernel WireGuard (requires wireguard-tools)
 
 ### Client
 

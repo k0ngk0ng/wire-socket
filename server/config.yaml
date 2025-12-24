@@ -21,6 +21,9 @@ wireguard:
   # WireGuard interface name
   device_name: "wg0"
 
+  # WireGuard mode: "kernel" (requires wireguard-tools) or "userspace" (pure Go, no dependencies)
+  mode: "userspace"
+
   # Server listen port
   listen_port: 51820
 

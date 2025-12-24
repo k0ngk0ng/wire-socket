@@ -88,10 +88,16 @@ The server is organized into internal packages:
   - Session tracking for revocation
 
 - **`internal/wireguard/`**: WireGuard management
-  - `manager.go`: Controls WireGuard device via wgctrl library
+  - `manager.go`: Controls WireGuard via backend abstraction (supports kernel and userspace modes)
   - `config_generator.go`: Dynamically generates peer configs
   - Allocates IPs from subnet pool
   - Adds/removes peers dynamically
+
+- **`pkg/wireguard/`**: Shared WireGuard backend abstraction
+  - `backend.go`: Interface definitions for kernel/userspace backends
+  - `kernel.go`: Kernel WireGuard backend using wgctrl
+  - `userspace.go`: Pure Go userspace WireGuard implementation
+  - `platform_*.go`: Platform-specific helpers (Linux, macOS, Windows)
 
 - **`internal/api/`**: HTTP API routes (Gin framework)
   - POST `/api/auth/register` - User registration
@@ -99,7 +105,7 @@ The server is organized into internal packages:
   - GET `/api/config` - WireGuard config (authenticated)
   - GET `/api/status` - Connection status
 
-**Important**: Server requires `golang.zx2c4.com/wireguard/wgctrl` for WireGuard control. Must run with sudo/root privileges.
+**Important**: Server must run with sudo/root privileges. Supports both kernel and userspace WireGuard modes.
 
 ### Client Backend Architecture
 
@@ -111,7 +117,7 @@ The client backend runs as a system service (Windows Service/macOS LaunchDaemon/
   - Tracks traffic statistics (RX/TX bytes)
 
 - **`internal/wireguard/`**: WireGuard interface operations
-  - Creates/destroys WireGuard interfaces
+  - Uses userspace WireGuard by default (no WireGuard installation required)
   - Applies peer configurations from server
   - Monitors traffic statistics
 
@@ -126,7 +132,7 @@ The client backend runs as a system service (Windows Service/macOS LaunchDaemon/
   - GET `/api/status` - Connection status + stats
   - GET/POST `/api/servers` - Manage saved servers
 
-**Key dependency**: `github.com/kardianos/service` for cross-platform service management.
+**Key dependency**: `github.com/kardianos/service` for cross-platform service management. Uses userspace WireGuard by default (no WireGuard installation required on client).
 
 ### Electron Frontend Architecture
 
@@ -168,6 +174,7 @@ database:
 
 wireguard:
   device_name: "wg0"
+  mode: "userspace"         # "userspace" (default, no deps) or "kernel" (requires wireguard-tools)
   listen_port: 51820
   subnet: "10.0.0.0/24"
   dns: "1.1.1.1,8.8.8.8"
@@ -295,8 +302,9 @@ sudo ./wire-socket-client  # Logs to stdout
 ### Common Issues
 
 **"Failed to configure WireGuard device"**
-- Install WireGuard tools: `sudo apt install wireguard-tools` (Linux) or `brew install wireguard-tools` (macOS)
-- Load kernel module: `sudo modprobe wireguard` (Linux)
+- If using `mode: "kernel"`: Install WireGuard tools: `sudo apt install wireguard-tools` (Linux) or `brew install wireguard-tools` (macOS)
+- If using `mode: "userspace"` (default): Ensure you have root/sudo privileges for TUN device creation
+- On Linux with kernel mode: Load kernel module: `sudo modprobe wireguard`
 
 **"Permission denied"**
 - Run with sudo: `sudo ./wire-socket-server` or `sudo ./wire-socket-client`

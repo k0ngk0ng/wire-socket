@@ -3,13 +3,19 @@ package wireguard
 import (
 	"fmt"
 	"net"
-	"os/exec"
-	"runtime"
-	"strings"
 	"time"
 
-	"golang.zx2c4.com/wireguard/wgctrl"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	wg "wire-socket/pkg/wireguard"
+)
+
+// Mode represents the WireGuard operation mode
+type Mode = wg.Mode
+
+const (
+	// ModeKernel uses kernel WireGuard
+	ModeKernel = wg.ModeKernel
+	// ModeUserspace uses pure Go userspace WireGuard
+	ModeUserspace = wg.ModeUserspace
 )
 
 // WGConfig represents a WireGuard configuration
@@ -29,11 +35,10 @@ type PeerConfig struct {
 
 // Interface represents a WireGuard interface
 type Interface struct {
-	Name   string
-	client *wgctrl.Client
-	stats  Stats
-	lastStats Stats
-	lastUpdate time.Time
+	Name    string
+	backend wg.ClientBackend
+	mode    Mode
+	stats   Stats
 }
 
 // Stats represents traffic statistics
@@ -44,43 +49,72 @@ type Stats struct {
 	TxSpeed uint64 // bytes/sec
 }
 
-// NewInterface creates a new WireGuard interface
+// InterfaceConfig configures the WireGuard interface
+type InterfaceConfig struct {
+	Name string
+	Mode Mode // "kernel" or "userspace"
+}
+
+// NewInterface creates a new WireGuard interface with kernel mode (default, for compatibility)
 func NewInterface(name string) (*Interface, error) {
-	// Create interface using platform-specific method
-	if err := createInterface(name); err != nil {
-		return nil, fmt.Errorf("failed to create interface: %w", err)
+	return NewInterfaceWithConfig(InterfaceConfig{
+		Name: name,
+		Mode: ModeUserspace, // Default to userspace for client (no WireGuard installation required)
+	})
+}
+
+// NewInterfaceWithConfig creates a new WireGuard interface with the specified configuration
+func NewInterfaceWithConfig(cfg InterfaceConfig) (*Interface, error) {
+	name := cfg.Name
+	if name == "" {
+		name = "wg-vpn"
 	}
 
-	client, err := wgctrl.New()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create wgctrl client: %w", err)
+	mode := cfg.Mode
+	if mode == "" {
+		mode = ModeUserspace
+	}
+
+	var backend wg.ClientBackend
+	var err error
+
+	switch mode {
+	case ModeUserspace:
+		backend, err = wg.NewUserspaceBackend(wg.UserspaceConfig{
+			InterfaceName: name,
+			MTU:           1420,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create userspace backend: %w", err)
+		}
+	case ModeKernel:
+		backend, err = wg.NewKernelBackend(wg.KernelConfig{
+			InterfaceName: name,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kernel backend: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unknown mode: %s", mode)
 	}
 
 	return &Interface{
-		Name:   name,
-		client: client,
-		lastUpdate: time.Now(),
+		Name:    name,
+		backend: backend,
+		mode:    mode,
 	}, nil
 }
 
 // Configure configures the WireGuard interface
 func (i *Interface) Configure(config *WGConfig) error {
-	// Parse private key
-	privateKey, err := wgtypes.ParseKey(config.PrivateKey)
+	// Configure the backend
+	err := i.backend.Configure(wg.Config{
+		PrivateKey: config.PrivateKey,
+		Address:    config.Address,
+		DNS:        config.DNS,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	// Parse peer public key
-	peerKey, err := wgtypes.ParseKey(config.Peer.PublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to parse peer public key: %w", err)
-	}
-
-	// Parse endpoint
-	endpoint, err := net.ResolveUDPAddr("udp", config.Peer.Endpoint)
-	if err != nil {
-		return fmt.Errorf("failed to parse endpoint: %w", err)
+		return fmt.Errorf("failed to configure device: %w", err)
 	}
 
 	// Parse allowed IPs
@@ -89,35 +123,32 @@ func (i *Interface) Configure(config *WGConfig) error {
 		return fmt.Errorf("failed to parse allowed IPs: %w", err)
 	}
 
-	// Configure persistent keepalive
-	keepalive := 25 * time.Second
-
-	// Build configuration
-	peerConfig := wgtypes.PeerConfig{
-		PublicKey:                   peerKey,
-		Endpoint:                    endpoint,
-		AllowedIPs:                  allowedIPs,
-		PersistentKeepaliveInterval: &keepalive,
+	// Add peer
+	err = i.backend.AddPeer(wg.PeerConfig{
+		PublicKey:           config.Peer.PublicKey,
+		Endpoint:            config.Peer.Endpoint,
+		AllowedIPs:          allowedIPs,
+		PersistentKeepalive: 25 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add peer: %w", err)
 	}
 
-	wgConfig := wgtypes.Config{
-		PrivateKey: &privateKey,
-		Peers:      []wgtypes.PeerConfig{peerConfig},
+	// Set up routes for the allowed IPs
+	var routes []net.IPNet
+	for _, ip := range allowedIPs {
+		_, ipNet, err := net.ParseCIDR(ip)
+		if err != nil {
+			continue
+		}
+		routes = append(routes, *ipNet)
 	}
 
-	// Apply configuration
-	if err := i.client.ConfigureDevice(i.Name, wgConfig); err != nil {
-		return fmt.Errorf("failed to configure device: %w", err)
-	}
-
-	// Set IP address on interface
-	if err := setInterfaceAddress(i.Name, config.Address); err != nil {
-		return fmt.Errorf("failed to set interface address: %w", err)
-	}
-
-	// Bring interface up
-	if err := bringInterfaceUp(i.Name); err != nil {
-		return fmt.Errorf("failed to bring interface up: %w", err)
+	if len(routes) > 0 {
+		if err := i.backend.SetRoutes(routes); err != nil {
+			// Log but don't fail - routing may need elevated privileges
+			fmt.Printf("Warning: failed to set routes: %v\n", err)
+		}
 	}
 
 	return nil
@@ -125,122 +156,70 @@ func (i *Interface) Configure(config *WGConfig) error {
 
 // GetStats returns current traffic statistics
 func (i *Interface) GetStats() (Stats, error) {
-	device, err := i.client.Device(i.Name)
+	stats, err := i.backend.GetStats()
 	if err != nil {
-		return Stats{}, fmt.Errorf("failed to get device: %w", err)
+		return Stats{}, err
 	}
 
-	if len(device.Peers) == 0 {
-		return Stats{}, fmt.Errorf("no peers configured")
-	}
+	return Stats{
+		RxBytes: stats.RxBytes,
+		TxBytes: stats.TxBytes,
+		RxSpeed: stats.RxSpeed,
+		TxSpeed: stats.TxSpeed,
+	}, nil
+}
 
-	peer := device.Peers[0]
-	now := time.Now()
-	elapsed := now.Sub(i.lastUpdate).Seconds()
-
-	if elapsed > 0 {
-		rxSpeed := uint64(float64(uint64(peer.ReceiveBytes)-i.lastStats.RxBytes) / elapsed)
-		txSpeed := uint64(float64(uint64(peer.TransmitBytes)-i.lastStats.TxBytes) / elapsed)
-
-		i.stats = Stats{
-			RxBytes: uint64(peer.ReceiveBytes),
-			TxBytes: uint64(peer.TransmitBytes),
-			RxSpeed: rxSpeed,
-			TxSpeed: txSpeed,
-		}
-
-		i.lastStats = Stats{
-			RxBytes: uint64(peer.ReceiveBytes),
-			TxBytes: uint64(peer.TransmitBytes),
-		}
-		i.lastUpdate = now
-	}
-
-	return i.stats, nil
+// GetMode returns the current WireGuard mode
+func (i *Interface) GetMode() Mode {
+	return i.mode
 }
 
 // Destroy removes the WireGuard interface
 func (i *Interface) Destroy() error {
-	if i.client != nil {
-		i.client.Close()
+	if i.backend != nil {
+		return i.backend.Close()
 	}
-
-	return destroyInterface(i.Name)
+	return nil
 }
 
-// Platform-specific interface creation functions
-// These are simplified placeholders - in production, you'd use proper implementations
-
 // parseAllowedIPs parses a comma-separated list of CIDR notations
-func parseAllowedIPs(s string) ([]net.IPNet, error) {
-	var result []net.IPNet
-	for _, cidr := range strings.Split(s, ",") {
-		cidr = strings.TrimSpace(cidr)
+func parseAllowedIPs(s string) ([]string, error) {
+	var result []string
+	for _, cidr := range splitAndTrim(s, ",") {
 		if cidr == "" {
 			continue
 		}
-		_, ipnet, err := net.ParseCIDR(cidr)
+		// Validate CIDR
+		_, _, err := net.ParseCIDR(cidr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid CIDR %q: %w", cidr, err)
 		}
-		result = append(result, *ipnet)
+		result = append(result, cidr)
 	}
 	return result, nil
 }
 
-func createInterface(name string) error {
-	switch runtime.GOOS {
-	case "linux":
-		// On Linux, use ip link add
-		return exec.Command("ip", "link", "add", name, "type", "wireguard").Run()
-	case "darwin":
-		// On macOS, WireGuard interface is created by wireguard-go
-		// This is handled by the userspace implementation
-		return nil
-	case "windows":
-		// On Windows, use wintun driver
-		// This is handled by wireguard-go with wintun
-		return nil
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+// splitAndTrim splits a string and trims whitespace from each part
+func splitAndTrim(s, sep string) []string {
+	var result []string
+	for i := 0; i < len(s); {
+		j := i
+		for j < len(s) && string(s[j]) != sep {
+			j++
+		}
+		part := s[i:j]
+		// Trim whitespace
+		start, end := 0, len(part)
+		for start < end && (part[start] == ' ' || part[start] == '\t') {
+			start++
+		}
+		for end > start && (part[end-1] == ' ' || part[end-1] == '\t') {
+			end--
+		}
+		if start < end {
+			result = append(result, part[start:end])
+		}
+		i = j + 1
 	}
-}
-
-func setInterfaceAddress(name, address string) error {
-	switch runtime.GOOS {
-	case "linux":
-		return exec.Command("ip", "addr", "add", address, "dev", name).Run()
-	case "darwin":
-		return exec.Command("ifconfig", name, "inet", address, "alias").Run()
-	case "windows":
-		// Windows address assignment is more complex
-		return nil
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
-}
-
-func bringInterfaceUp(name string) error {
-	switch runtime.GOOS {
-	case "linux":
-		return exec.Command("ip", "link", "set", name, "up").Run()
-	case "darwin":
-		return exec.Command("ifconfig", name, "up").Run()
-	case "windows":
-		return nil
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
-}
-
-func destroyInterface(name string) error {
-	switch runtime.GOOS {
-	case "linux":
-		return exec.Command("ip", "link", "del", name).Run()
-	case "darwin", "windows":
-		// Userspace implementations cleanup automatically
-		return nil
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
+	return result
 }
