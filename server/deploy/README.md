@@ -9,7 +9,6 @@ This directory contains deployment configurations for various environments.
 | **systemd** | Linux servers, VPS | `systemd/` |
 | **Docker** | Single container | `docker/` |
 | **docker-compose** | Local/dev environment | `docker/` |
-| **Kubernetes Helm** | Production clusters | `helm/` |
 
 ## Quick Start
 
@@ -56,19 +55,6 @@ nano data/config.yaml
 
 # Start
 docker-compose up -d
-```
-
-### Option 4: Kubernetes Helm
-
-```bash
-cd deploy/helm
-
-# Install
-helm install wire-socket ./wire-socket \
-  --namespace wire-socket \
-  --create-namespace \
-  --set config.wireguard.endpoint="your-server:51820" \
-  --set config.auth.jwtSecret="your-secret"
 ```
 
 ## Configuration
@@ -119,11 +105,6 @@ tunnel:
 - Docker 20.10+
 - docker-compose 2.0+ (for compose)
 
-### Kubernetes
-- Kubernetes 1.19+
-- Helm 3.0+
-- Privileged pods or NET_ADMIN capability
-
 ## First Run
 
 After deployment, initialize the database:
@@ -134,10 +115,6 @@ sudo wire-socket-server -config /etc/wire-socket/config.yaml -init-db
 
 # Docker
 docker exec wire-socket-server /app/wire-socket-server -config /data/config.yaml -init-db
-
-# Kubernetes
-kubectl exec -it deploy/wire-socket -n wire-socket -- \
-  /app/wire-socket-server -config /etc/wire-socket/config.yaml -init-db
 ```
 
 This creates the default admin user:

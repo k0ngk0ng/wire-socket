@@ -38,7 +38,6 @@ The server includes a built-in WebSocket tunnel (port 443) and userspace WireGua
 - **systemd** - Linux service
 - **Docker** - Container deployment
 - **docker-compose** - Multi-container setup
-- **Kubernetes Helm** - Production clusters
 
 ### Client
 
