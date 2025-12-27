@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"wire-socket-client/internal/api"
@@ -9,6 +10,9 @@ import (
 
 	"github.com/kardianos/service"
 )
+
+// Version is set at build time via -ldflags
+var Version = "dev"
 
 var logger service.Logger
 
@@ -65,7 +69,13 @@ func (p *Program) Stop(s service.Service) error {
 func main() {
 	// Parse command line flags
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
+	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("wire-socket-client version %s\n", Version)
+		return
+	}
 
 	// Service configuration
 	svcConfig := &service.Config{

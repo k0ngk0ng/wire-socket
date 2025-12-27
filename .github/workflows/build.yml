@@ -8,6 +8,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  # Extract version from tag (v1.2.3 -> 1.2.3), default to 0.0.0-dev
+  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0-dev' }}
+
 jobs:
   # Build server for all platforms
   build-server:
@@ -39,12 +43,21 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          # Remove 'v' prefix if present
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Build server
         working-directory: server
         run: |
           go mod download
+          VERSION="${{ steps.version.outputs.version }}"
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -ldflags="-s -w" -o wire-socket-server-${{ matrix.suffix }} ./cmd/server
+            go build -ldflags="-s -w -X main.Version=$VERSION" -o wire-socket-server-${{ matrix.suffix }} ./cmd/server
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -70,13 +83,29 @@ jobs:
           cache: 'npm'
           cache-dependency-path: client/frontend/package-lock.json
 
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          # Remove 'v' prefix if present
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        working-directory: client/frontend
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Update version in package.json
+          node -e "const pkg = require('./package.json'); pkg.version = '$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
       - name: Build backend (amd64 + arm64)
         working-directory: client/backend
         run: |
           go mod download
+          VERSION="${{ steps.version.outputs.version }}"
           mkdir -p ../frontend/resources/bin/darwin
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../frontend/resources/bin/darwin/wire-socket-client ./cmd/client
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../frontend/resources/bin/darwin/wire-socket-client-arm64 ./cmd/client
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/darwin/wire-socket-client ./cmd/client
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/darwin/wire-socket-client-arm64 ./cmd/client
           chmod +x ../frontend/resources/bin/darwin/*
 
       - name: Install dependencies
@@ -114,13 +143,30 @@ jobs:
           cache: 'npm'
           cache-dependency-path: client/frontend/package-lock.json
 
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ env.VERSION }}"
+          # Remove 'v' prefix if present
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        working-directory: client/frontend
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node -e "const pkg = require('./package.json'); pkg.version = '$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
       - name: Build backend
         working-directory: client/backend
         shell: bash
         run: |
           go mod download
+          VERSION="${{ steps.version.outputs.version }}"
           mkdir -p ../frontend/resources/bin/win32
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ../frontend/resources/bin/win32/wire-socket-client.exe ./cmd/client
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/win32/wire-socket-client.exe ./cmd/client
 
       - name: Install dependencies
         working-directory: client/frontend
@@ -161,12 +207,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm libarchive-tools
 
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          # Remove 'v' prefix if present
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        working-directory: client/frontend
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node -e "const pkg = require('./package.json'); pkg.version = '$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
       - name: Build backend
         working-directory: client/backend
         run: |
           go mod download
+          VERSION="${{ steps.version.outputs.version }}"
           mkdir -p ../frontend/resources/bin/linux
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../frontend/resources/bin/linux/wire-socket-client ./cmd/client
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/linux/wire-socket-client ./cmd/client
           chmod +x ../frontend/resources/bin/linux/*
 
       - name: Install dependencies
