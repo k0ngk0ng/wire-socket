@@ -18,10 +18,12 @@ go.work.sum
 
 # Build artifacts
 dist/
-build/
 out/
 *.app
 *.dmg
+
+# Except client/frontend/build (electron-builder config)
+!client/frontend/build/
 *.pkg
 *.deb
 *.rpm

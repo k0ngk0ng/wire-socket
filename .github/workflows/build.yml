@@ -81,11 +81,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: client/frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build Electron app
         working-directory: client/frontend
-        run: npm run build:mac
+        run: npm run build:ci:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -124,11 +124,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: client/frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build Electron app
         working-directory: client/frontend
-        run: npm run build:win
+        run: npm run build:ci:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -171,11 +171,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: client/frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build Electron app
         working-directory: client/frontend
-        run: npm run build:linux
+        run: npm run build:ci:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
