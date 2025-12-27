@@ -90,6 +90,7 @@ else
 fi
 
 # For Linux, create a README about wireguard-tools
+mkdir -p "$RESOURCES_DIR/linux"
 cat > "$RESOURCES_DIR/linux/WIREGUARD-README.txt" << 'EOF'
 WireGuard on Linux
 ==================
