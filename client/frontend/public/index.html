@@ -342,6 +342,11 @@
     function updateStatus(state, data = null) {
       statusIndicator.className = `status-indicator ${state}`;
 
+      // Update tray menu status
+      if (window.electronAPI && window.electronAPI.updateTrayStatus) {
+        window.electronAPI.updateTrayStatus(state === 'connected');
+      }
+
       if (state === 'connected' && data) {
         statusText.textContent = 'Connected';
         loginForm.classList.add('hidden');

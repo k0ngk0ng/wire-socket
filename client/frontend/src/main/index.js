@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, nativeImage } = require('electron');
 const path = require('path');
 const axios = require('axios');
 const sudo = require('@vscode/sudo-prompt');
@@ -8,6 +8,7 @@ const API_BASE = 'http://127.0.0.1:41945';
 
 let mainWindow = null;
 let tray = null;
+let isQuitting = false;
 
 // Get the path to the backend binary
 function getBackendPath() {
@@ -204,6 +205,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    show: false, // Don't show until ready
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -213,36 +215,118 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '../../public/index.html'));
 
+  // Show window when ready to prevent visual flash
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  // Hide instead of close
+  // Minimize to tray instead of close (all platforms)
   mainWindow.on('close', (event) => {
-    if (!app.isQuitting) {
+    if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
+
+      // On macOS, also hide from dock when minimized to tray
+      if (process.platform === 'darwin') {
+        app.dock.hide();
+      }
+    }
+  });
+
+  // Handle minimize to tray
+  mainWindow.on('minimize', (event) => {
+    event.preventDefault();
+    mainWindow.hide();
+
+    // On macOS, also hide from dock when minimized to tray
+    if (process.platform === 'darwin') {
+      app.dock.hide();
     }
   });
 }
 
 function createTray() {
-  // Note: You'll need to provide an icon file
-  // tray = new Tray(path.join(__dirname, '../../public/icon.png'));
+  // Create a simple tray icon using nativeImage
+  // Use a template image for macOS (automatically adapts to light/dark menu bar)
+  let icon;
 
+  if (process.platform === 'darwin') {
+    // macOS: Use 16x16 template image (will auto-adjust for retina)
+    icon = nativeImage.createFromBuffer(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA' +
+        'YKLEQUNDREFUCB1jYGBg+M+ABVy4cOE/AwMDKwMWwMjIyMCIzRQGBgYGZgZsgJmZGacGZmZmBhY' +
+        'mJiasSllZWXH6hJWVFacLWFlZGZgBs1xxOQAAD+4RQa+gvIAAAAAASUVORK5CYII=',
+        'base64'
+      )
+    );
+    icon.setTemplateImage(true);
+  } else {
+    // Windows/Linux: Use 16x16 color icon
+    icon = nativeImage.createFromBuffer(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA' +
+        'gklEQVQ4y2NgGAWjIQACFixY8J+BgYEVm6KLFy/+Z2RkZMSmhpmZmQGbGmZmZgYWJiYmrIpZWVl' +
+        'x+oSVlRWnC1hZWRmYGRgYWHEpAgBWXIoANLDiUgSggRWXIgANrLgUAWhgxaUIQAMrLkUAGlhxKQ' +
+        'LQwIpLEYAGVlyKADSw4lIEAACOLhhB1uxp1QAAAABJRU5ErkJggg==',
+        'base64'
+      )
+    );
+  }
+
+  tray = new Tray(icon);
+
+  // Update tray context menu
+  updateTrayMenu();
+
+  tray.setToolTip('WireSocket VPN');
+
+  // Double-click to show window (Windows/Linux)
+  tray.on('double-click', () => {
+    showWindow();
+  });
+
+  // Single click to show window on macOS
+  if (process.platform === 'darwin') {
+    tray.on('click', () => {
+      showWindow();
+    });
+  }
+}
+
+function showWindow() {
+  if (mainWindow) {
+    // Show dock icon on macOS
+    if (process.platform === 'darwin') {
+      app.dock.show();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+function updateTrayMenu(isConnected = false) {
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show App',
+      label: 'Show WireSocket',
       click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-        }
+        showWindow();
       },
     },
+    { type: 'separator' },
+    {
+      label: isConnected ? 'Status: Connected' : 'Status: Disconnected',
+      enabled: false,
+    },
+    { type: 'separator' },
     {
       label: 'Quit',
       click: () => {
-        app.isQuitting = true;
+        isQuitting = true;
         app.quit();
       },
     },
@@ -250,7 +334,6 @@ function createTray() {
 
   if (tray) {
     tray.setContextMenu(contextMenu);
-    tray.setToolTip('VPN Client');
   }
 }
 
@@ -275,7 +358,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  app.isQuitting = true;
+  isQuitting = true;
 });
 
 // IPC Handlers
@@ -342,4 +425,10 @@ ipcMain.handle('api:addServer', async (event, server) => {
       error: error.response?.data?.error || error.message
     };
   }
+});
+
+// Update tray menu when connection status changes
+ipcMain.handle('tray:updateStatus', async (event, isConnected) => {
+  updateTrayMenu(isConnected);
+  return { success: true };
 });
