@@ -1,0 +1,27 @@
+[Unit]
+Description=WireSocket VPN Server
+Documentation=https://github.com/k0ngk0ng/wire-socket
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/wire-socket-server -config /etc/wire-socket/config.yaml
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/wire-socket /var/lib/wire-socket /etc/wireguard
+PrivateTmp=true
+
+# Environment
+Environment=GIN_MODE=release
+
+[Install]
+WantedBy=multi-user.target
