@@ -1,0 +1,225 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Build server for all platforms
+  build-server:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build server
+        working-directory: server
+        run: |
+          go mod download
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -ldflags="-s -w" -o wire-socket-server-${{ matrix.suffix }} ./cmd/server
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.suffix }}
+          path: server/wire-socket-server-${{ matrix.suffix }}
+
+  # Build client on native platforms
+  build-client-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/frontend/package-lock.json
+
+      - name: Build backend (amd64 + arm64)
+        working-directory: client/backend
+        run: |
+          go mod download
+          mkdir -p ../frontend/resources/bin/darwin
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../frontend/resources/bin/darwin/wire-socket-client ./cmd/client
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../frontend/resources/bin/darwin/wire-socket-client-arm64 ./cmd/client
+          chmod +x ../frontend/resources/bin/darwin/*
+
+      - name: Install dependencies
+        working-directory: client/frontend
+        run: npm ci
+
+      - name: Build Electron app
+        working-directory: client/frontend
+        run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-macos
+          path: |
+            client/dist/*.dmg
+            client/dist/*.zip
+
+  build-client-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/frontend/package-lock.json
+
+      - name: Build backend
+        working-directory: client/backend
+        shell: bash
+        run: |
+          go mod download
+          mkdir -p ../frontend/resources/bin/win32
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ../frontend/resources/bin/win32/wire-socket-client.exe ./cmd/client
+
+      - name: Install dependencies
+        working-directory: client/frontend
+        run: npm ci
+
+      - name: Build Electron app
+        working-directory: client/frontend
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-windows
+          path: |
+            client/dist/*.exe
+
+  build-client-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/frontend/package-lock.json
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm libarchive-tools
+
+      - name: Build backend
+        working-directory: client/backend
+        run: |
+          go mod download
+          mkdir -p ../frontend/resources/bin/linux
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../frontend/resources/bin/linux/wire-socket-client ./cmd/client
+          chmod +x ../frontend/resources/bin/linux/*
+
+      - name: Install dependencies
+        working-directory: client/frontend
+        run: npm ci
+
+      - name: Build Electron app
+        working-directory: client/frontend
+        run: npm run build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-linux
+          path: |
+            client/dist/*.AppImage
+            client/dist/*.deb
+            client/dist/*.rpm
+
+  # Create release when tag is pushed
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-server, build-client-macos, build-client-windows, build-client-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Server binaries
+          find artifacts -name 'wire-socket-server-*' -exec cp {} release/ \;
+          # Client packages
+          find artifacts -name '*.dmg' -exec cp {} release/ \;
+          find artifacts -name '*.zip' -exec cp {} release/ \;
+          find artifacts -name '*.exe' -exec cp {} release/ \;
+          find artifacts -name '*.AppImage' -exec cp {} release/ \;
+          find artifacts -name '*.deb' -exec cp {} release/ \;
+          find artifacts -name '*.rpm' -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
