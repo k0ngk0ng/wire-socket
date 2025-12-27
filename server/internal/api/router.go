@@ -12,23 +12,23 @@ import (
 
 // Router sets up the API routes
 type Router struct {
-	authHandler *auth.Handler
-	db          *database.DB
-	configGen   *wireguard.ConfigGenerator
-	tunnelURL   string
-	routes      []string // Additional routes to push to clients
-	subnet      string   // VPN subnet (automatically included in routes)
+	authHandler  *auth.Handler
+	adminHandler *AdminHandler
+	db           *database.DB
+	configGen    *wireguard.ConfigGenerator
+	tunnelURL    string
+	subnet       string // VPN subnet (automatically included in routes)
 }
 
 // NewRouter creates a new API router
-func NewRouter(authHandler *auth.Handler, db *database.DB, configGen *wireguard.ConfigGenerator, tunnelURL string, routes []string, subnet string) *Router {
+func NewRouter(authHandler *auth.Handler, adminHandler *AdminHandler, db *database.DB, configGen *wireguard.ConfigGenerator, tunnelURL string, subnet string) *Router {
 	return &Router{
-		authHandler: authHandler,
-		db:          db,
-		configGen:   configGen,
-		tunnelURL:   tunnelURL,
-		routes:      routes,
-		subnet:      subnet,
+		authHandler:  authHandler,
+		adminHandler: adminHandler,
+		db:           db,
+		configGen:    configGen,
+		tunnelURL:    tunnelURL,
+		subnet:       subnet,
 	}
 }
 
@@ -59,13 +59,30 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 			protected.GET("/status", r.GetStatus)
 		}
 
-		// Admin routes (would need admin middleware in production)
+		// Admin routes (requires authentication + admin privileges)
 		admin := v1.Group("/admin")
 		admin.Use(r.authHandler.AuthMiddleware())
+		admin.Use(r.authHandler.AdminMiddleware())
 		{
-			admin.POST("/users", r.CreateUser)
-			admin.GET("/users", r.ListUsers)
-			admin.DELETE("/users/:id", r.DeleteUser)
+			// User management
+			admin.GET("/users", r.adminHandler.ListUsers)
+			admin.POST("/users", r.authHandler.CreateUserByAdmin)
+			admin.GET("/users/:id", r.adminHandler.GetUser)
+			admin.PUT("/users/:id", r.adminHandler.UpdateUser)
+			admin.DELETE("/users/:id", r.adminHandler.DeleteUser)
+
+			// Route management
+			admin.GET("/routes", r.adminHandler.ListRoutes)
+			admin.POST("/routes", r.adminHandler.CreateRoute)
+			admin.PUT("/routes/:id", r.adminHandler.UpdateRoute)
+			admin.DELETE("/routes/:id", r.adminHandler.DeleteRoute)
+
+			// NAT rule management
+			admin.GET("/nat", r.adminHandler.ListNATRules)
+			admin.POST("/nat", r.adminHandler.CreateNATRule)
+			admin.PUT("/nat/:id", r.adminHandler.UpdateNATRule)
+			admin.DELETE("/nat/:id", r.adminHandler.DeleteNATRule)
+			admin.POST("/nat/apply", r.adminHandler.ApplyNATRules)
 		}
 	}
 }
@@ -94,9 +111,12 @@ func (r *Router) GetConfig(c *gin.Context) {
 		return
 	}
 
-	// Build routes: subnet + additional routes
+	// Build routes: subnet + additional routes from database
 	allRoutes := []string{r.subnet}
-	allRoutes = append(allRoutes, r.routes...)
+	dbRoutes, err := r.adminHandler.GetEnabledRoutes()
+	if err == nil {
+		allRoutes = append(allRoutes, dbRoutes...)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"config":     config,
@@ -135,54 +155,4 @@ func (r *Router) GetStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"allocations": allocations,
 	})
-}
-
-// CreateUser creates a new user (admin only)
-func (r *Router) CreateUser(c *gin.Context) {
-	var req struct {
-		Username string `json:"username" binding:"required"`
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required,min=8"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
-		return
-	}
-
-	// Use auth handler to register user
-	r.authHandler.Register(c)
-}
-
-// ListUsers returns all users (admin only)
-func (r *Router) ListUsers(c *gin.Context) {
-	var users []database.User
-	if err := r.db.Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch users"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"users": users})
-}
-
-// DeleteUser deletes a user (admin only)
-func (r *Router) DeleteUser(c *gin.Context) {
-	userID := c.Param("id")
-
-	var user database.User
-	if err := r.db.First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		return
-	}
-
-	// Delete user's IP allocations
-	r.db.Where("user_id = ?", user.ID).Delete(&database.AllocatedIP{})
-
-	// Delete user
-	if err := r.db.Delete(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete user"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "user deleted successfully"})
 }

@@ -11,14 +11,16 @@ import (
 )
 
 type Handler struct {
-	db        *database.DB
-	jwtSecret []byte
+	db                *database.DB
+	jwtSecret         []byte
+	allowRegistration bool
 }
 
-func NewHandler(db *database.DB, jwtSecret string) *Handler {
+func NewHandler(db *database.DB, jwtSecret string, allowRegistration bool) *Handler {
 	return &Handler{
-		db:        db,
-		jwtSecret: []byte(jwtSecret),
+		db:                db,
+		jwtSecret:         []byte(jwtSecret),
+		allowRegistration: allowRegistration,
 	}
 }
 
@@ -97,6 +99,12 @@ func (h *Handler) Login(c *gin.Context) {
 
 // Register handles user registration
 func (h *Handler) Register(c *gin.Context) {
+	// Check if registration is allowed
+	if !h.allowRegistration {
+		c.JSON(http.StatusForbidden, gin.H{"error": "registration is disabled"})
+		return
+	}
+
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -220,4 +228,80 @@ func (h *Handler) AuthMiddleware() gin.HandlerFunc {
 		c.Set("user_id", userID)
 		c.Next()
 	}
+}
+
+// AdminMiddleware is a middleware that checks if the user is an admin
+// Must be used AFTER AuthMiddleware
+func (h *Handler) AdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.Abort()
+			return
+		}
+
+		// Check if user is admin
+		var user database.User
+		if err := h.db.First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+			c.Abort()
+			return
+		}
+
+		if !user.IsAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+			c.Abort()
+			return
+		}
+
+		c.Set("is_admin", true)
+		c.Next()
+	}
+}
+
+// CreateUserByAdmin creates a user without registration check (for admin use)
+func (h *Handler) CreateUserByAdmin(c *gin.Context) {
+	var req struct {
+		Username string `json:"username" binding:"required"`
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required,min=8"`
+		IsAdmin  bool   `json:"is_admin"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+		return
+	}
+
+	// Create user
+	user := database.User{
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: string(hashedPassword),
+		IsActive:     true,
+		IsAdmin:      req.IsAdmin,
+	}
+
+	if err := h.db.Create(&user).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "username or email already exists"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "user created successfully",
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+			"is_admin": user.IsAdmin,
+		},
+	})
 }
