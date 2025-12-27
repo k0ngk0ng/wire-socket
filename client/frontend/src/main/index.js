@@ -1,11 +1,90 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu } = require('electron');
 const path = require('path');
 const axios = require('axios');
+const { spawn } = require('child_process');
+const fs = require('fs');
 
 const API_BASE = 'http://127.0.0.1:41945';
 
 let mainWindow = null;
 let tray = null;
+let backendProcess = null;
+
+// Get the path to the backend binary
+function getBackendPath() {
+  const isPackaged = app.isPackaged;
+  const platform = process.platform;
+  const arch = process.arch;
+
+  let binaryName = 'wire-socket-client';
+  if (platform === 'win32') {
+    binaryName = 'wire-socket-client.exe';
+  } else if (platform === 'darwin' && arch === 'arm64') {
+    binaryName = 'wire-socket-client-arm64';
+  }
+
+  if (isPackaged) {
+    // In packaged app, binary is in resources/bin/
+    return path.join(process.resourcesPath, 'bin', binaryName);
+  } else {
+    // In development, binary is in resources/bin/{platform}/
+    const platformDir = platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'win32' : 'linux';
+    return path.join(__dirname, '../../resources/bin', platformDir, binaryName);
+  }
+}
+
+// Start the backend service
+function startBackend() {
+  const backendPath = getBackendPath();
+
+  console.log('Backend path:', backendPath);
+
+  // Check if backend binary exists
+  if (!fs.existsSync(backendPath)) {
+    console.error('Backend binary not found:', backendPath);
+    return;
+  }
+
+  // Check if backend is already running
+  axios.get(`${API_BASE}/health`)
+    .then(() => {
+      console.log('Backend already running');
+    })
+    .catch(() => {
+      console.log('Starting backend...');
+
+      backendProcess = spawn(backendPath, [], {
+        detached: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      backendProcess.stdout.on('data', (data) => {
+        console.log(`Backend: ${data}`);
+      });
+
+      backendProcess.stderr.on('data', (data) => {
+        console.error(`Backend error: ${data}`);
+      });
+
+      backendProcess.on('error', (err) => {
+        console.error('Failed to start backend:', err);
+      });
+
+      backendProcess.on('exit', (code) => {
+        console.log(`Backend exited with code ${code}`);
+        backendProcess = null;
+      });
+    });
+}
+
+// Stop the backend service
+function stopBackend() {
+  if (backendProcess) {
+    console.log('Stopping backend...');
+    backendProcess.kill();
+    backendProcess = null;
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -62,8 +141,14 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
-  createWindow();
-  createTray();
+  // Start backend first
+  startBackend();
+
+  // Wait a bit for backend to start, then create window
+  setTimeout(() => {
+    createWindow();
+    createTray();
+  }, 1000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -80,6 +165,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  stopBackend();
 });
 
 // IPC Handlers
