@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
+	"wire-socket-server/internal/route"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
@@ -18,6 +19,9 @@ type Config struct {
 	Database struct {
 		Path string `yaml:"path"`
 	} `yaml:"database"`
+	WireGuard struct {
+		DeviceName string `yaml:"device_name"`
+	} `yaml:"wireguard"`
 	NAT struct {
 		Enabled bool `yaml:"enabled"`
 	} `yaml:"nat"`
@@ -57,7 +61,7 @@ func main() {
 		handleUserCommand(db, args)
 	// Route commands
 	case "route", "routes":
-		handleRouteCommand(db, args)
+		handleRouteCommand(db, config, args)
 	// NAT commands
 	case "nat":
 		handleNATCommand(db, config, args)
@@ -103,12 +107,20 @@ Commands:
   user delete <id>              Delete a user
 
   route list                    List all routes
-  route create <cidr> [comment] Create a new route
+  route create <cidr> [options] Create a new route
+    --gateway=<ip>              Next hop gateway (optional)
+    --device=<dev>              Interface (optional, defaults to wg device)
+    --comment=<text>            Comment
+    --push-to-client=true|false Push to VPN clients (default: true)
   route update <id> [options]   Update route
     --cidr=<cidr>               Set CIDR
+    --gateway=<ip>              Set gateway
+    --device=<dev>              Set device
     --comment=<text>            Set comment
     --enabled=true|false        Set enabled status
+    --push-to-client=true|false Push to clients
   route delete <id>             Delete a route
+  route apply                   Apply routes to server routing table
 
   nat list                      List all NAT rules
   nat create <type> [options]   Create NAT rule
@@ -302,7 +314,7 @@ func deleteUser(db *database.DB, idStr string) {
 
 // ============ Route Commands ============
 
-func handleRouteCommand(db *database.DB, args []string) {
+func handleRouteCommand(db *database.DB, config *Config, args []string) {
 	if len(args) == 0 {
 		args = []string{"list"}
 	}
@@ -312,14 +324,10 @@ func handleRouteCommand(db *database.DB, args []string) {
 		listRoutes(db)
 	case "create", "add":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: wsctl route create <cidr> [comment]")
+			fmt.Fprintln(os.Stderr, "Usage: wsctl route create <cidr> [options]")
 			os.Exit(1)
 		}
-		comment := ""
-		if len(args) >= 3 {
-			comment = args[2]
-		}
-		createRoute(db, args[1], comment)
+		createRoute(db, args[1], args[2:])
 	case "update", "edit":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Usage: wsctl route update <id> [options]")
@@ -332,6 +340,8 @@ func handleRouteCommand(db *database.DB, args []string) {
 			os.Exit(1)
 		}
 		deleteRoute(db, args[1])
+	case "apply":
+		applyRoutes(db, config)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown route subcommand: %s\n", args[0])
 		os.Exit(1)
@@ -351,18 +361,41 @@ func listRoutes(db *database.DB) {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tCIDR\tCOMMENT\tENABLED")
+	fmt.Fprintln(w, "ID\tCIDR\tGATEWAY\tDEVICE\tPUSH\tCOMMENT\tENABLED")
 	for _, r := range routes {
-		fmt.Fprintf(w, "%d\t%s\t%s\t%v\n", r.ID, r.CIDR, r.Comment, r.Enabled)
+		gateway := r.Gateway
+		if gateway == "" {
+			gateway = "-"
+		}
+		device := r.Device
+		if device == "" {
+			device = "(default)"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%v\t%s\t%v\n", r.ID, r.CIDR, gateway, device, r.PushToClient, r.Comment, r.Enabled)
 	}
 	w.Flush()
 }
 
-func createRoute(db *database.DB, cidr, comment string) {
+func createRoute(db *database.DB, cidr string, opts []string) {
 	route := database.Route{
-		CIDR:    cidr,
-		Comment: comment,
-		Enabled: true,
+		CIDR:         cidr,
+		Enabled:      true,
+		PushToClient: true,
+	}
+
+	for _, opt := range opts {
+		if strings.HasPrefix(opt, "--gateway=") {
+			route.Gateway = strings.TrimPrefix(opt, "--gateway=")
+		} else if strings.HasPrefix(opt, "--device=") {
+			route.Device = strings.TrimPrefix(opt, "--device=")
+		} else if strings.HasPrefix(opt, "--comment=") {
+			route.Comment = strings.TrimPrefix(opt, "--comment=")
+		} else if strings.HasPrefix(opt, "--push-to-client=") {
+			route.PushToClient = strings.TrimPrefix(opt, "--push-to-client=") == "true"
+		} else if !strings.HasPrefix(opt, "--") {
+			// Legacy: treat non-option argument as comment
+			route.Comment = opt
+		}
 	}
 
 	if err := db.Create(&route).Error; err != nil {
@@ -389,10 +422,16 @@ func updateRoute(db *database.DB, idStr string, opts []string) {
 	for _, opt := range opts {
 		if strings.HasPrefix(opt, "--cidr=") {
 			route.CIDR = strings.TrimPrefix(opt, "--cidr=")
+		} else if strings.HasPrefix(opt, "--gateway=") {
+			route.Gateway = strings.TrimPrefix(opt, "--gateway=")
+		} else if strings.HasPrefix(opt, "--device=") {
+			route.Device = strings.TrimPrefix(opt, "--device=")
 		} else if strings.HasPrefix(opt, "--comment=") {
 			route.Comment = strings.TrimPrefix(opt, "--comment=")
 		} else if strings.HasPrefix(opt, "--enabled=") {
 			route.Enabled = strings.TrimPrefix(opt, "--enabled=") == "true"
+		} else if strings.HasPrefix(opt, "--push-to-client=") {
+			route.PushToClient = strings.TrimPrefix(opt, "--push-to-client=") == "true"
 		}
 	}
 
@@ -423,6 +462,42 @@ func deleteRoute(db *database.DB, idStr string) {
 	}
 
 	fmt.Printf("Route deleted: ID=%d\n", route.ID)
+}
+
+func applyRoutes(db *database.DB, config *Config) {
+	var routes []database.Route
+	if err := db.Where("enabled = ?", true).Find(&routes).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading routes: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build route config
+	routeConfig := route.Config{
+		DefaultDevice: config.WireGuard.DeviceName,
+	}
+
+	for _, r := range routes {
+		// Only apply server-side routes (not just client-push routes)
+		routeConfig.Routes = append(routeConfig.Routes, route.Route{
+			CIDR:    r.CIDR,
+			Gateway: r.Gateway,
+			Device:  r.Device,
+		})
+	}
+
+	if len(routeConfig.Routes) == 0 {
+		fmt.Println("No routes to apply")
+		return
+	}
+
+	// Apply routes
+	manager := route.NewManager(routeConfig)
+	if err := manager.Apply(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error applying routes: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Routes applied: %d routes\n", len(routeConfig.Routes))
 }
 
 // ============ NAT Commands ============

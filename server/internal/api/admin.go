@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
+	"wire-socket-server/internal/route"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -12,21 +13,30 @@ import (
 
 // AdminHandler handles admin API endpoints
 type AdminHandler struct {
-	db         *database.DB
-	natManager *nat.Manager
+	db           *database.DB
+	natManager   *nat.Manager
+	routeManager *route.Manager
+	wgDevice     string // WireGuard device name for default routing
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *database.DB, natManager *nat.Manager) *AdminHandler {
+func NewAdminHandler(db *database.DB, natManager *nat.Manager, routeManager *route.Manager, wgDevice string) *AdminHandler {
 	return &AdminHandler{
-		db:         db,
-		natManager: natManager,
+		db:           db,
+		natManager:   natManager,
+		routeManager: routeManager,
+		wgDevice:     wgDevice,
 	}
 }
 
 // SetNATManager sets the NAT manager (for dynamic updates)
 func (h *AdminHandler) SetNATManager(natManager *nat.Manager) {
 	h.natManager = natManager
+}
+
+// SetRouteManager sets the route manager (for dynamic updates)
+func (h *AdminHandler) SetRouteManager(routeManager *route.Manager) {
+	h.routeManager = routeManager
 }
 
 // ============ User Management ============
@@ -161,9 +171,12 @@ func (h *AdminHandler) ListRoutes(c *gin.Context) {
 // CreateRoute creates a new route
 func (h *AdminHandler) CreateRoute(c *gin.Context) {
 	var req struct {
-		CIDR    string `json:"cidr" binding:"required"`
-		Comment string `json:"comment"`
-		Enabled *bool  `json:"enabled"`
+		CIDR         string `json:"cidr" binding:"required"`
+		Gateway      string `json:"gateway"`
+		Device       string `json:"device"`
+		Comment      string `json:"comment"`
+		Enabled      *bool  `json:"enabled"`
+		PushToClient *bool  `json:"push_to_client"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -176,18 +189,26 @@ func (h *AdminHandler) CreateRoute(c *gin.Context) {
 		enabled = *req.Enabled
 	}
 
-	route := database.Route{
-		CIDR:    req.CIDR,
-		Comment: req.Comment,
-		Enabled: enabled,
+	pushToClient := true
+	if req.PushToClient != nil {
+		pushToClient = *req.PushToClient
 	}
 
-	if err := h.db.Create(&route).Error; err != nil {
+	dbRoute := database.Route{
+		CIDR:         req.CIDR,
+		Gateway:      req.Gateway,
+		Device:       req.Device,
+		Comment:      req.Comment,
+		Enabled:      enabled,
+		PushToClient: pushToClient,
+	}
+
+	if err := h.db.Create(&dbRoute).Error; err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "route already exists"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"route": route})
+	c.JSON(http.StatusCreated, gin.H{"route": dbRoute})
 }
 
 // UpdateRoute updates a route
@@ -198,16 +219,19 @@ func (h *AdminHandler) UpdateRoute(c *gin.Context) {
 		return
 	}
 
-	var route database.Route
-	if err := h.db.First(&route, id).Error; err != nil {
+	var dbRoute database.Route
+	if err := h.db.First(&dbRoute, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "route not found"})
 		return
 	}
 
 	var req struct {
-		CIDR    string `json:"cidr"`
-		Comment string `json:"comment"`
-		Enabled *bool  `json:"enabled"`
+		CIDR         string `json:"cidr"`
+		Gateway      string `json:"gateway"`
+		Device       string `json:"device"`
+		Comment      string `json:"comment"`
+		Enabled      *bool  `json:"enabled"`
+		PushToClient *bool  `json:"push_to_client"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -216,21 +240,30 @@ func (h *AdminHandler) UpdateRoute(c *gin.Context) {
 	}
 
 	if req.CIDR != "" {
-		route.CIDR = req.CIDR
+		dbRoute.CIDR = req.CIDR
+	}
+	if req.Gateway != "" {
+		dbRoute.Gateway = req.Gateway
+	}
+	if req.Device != "" {
+		dbRoute.Device = req.Device
 	}
 	if req.Comment != "" {
-		route.Comment = req.Comment
+		dbRoute.Comment = req.Comment
 	}
 	if req.Enabled != nil {
-		route.Enabled = *req.Enabled
+		dbRoute.Enabled = *req.Enabled
+	}
+	if req.PushToClient != nil {
+		dbRoute.PushToClient = *req.PushToClient
 	}
 
-	if err := h.db.Save(&route).Error; err != nil {
+	if err := h.db.Save(&dbRoute).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update route"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"route": route})
+	c.JSON(http.StatusOK, gin.H{"route": dbRoute})
 }
 
 // DeleteRoute deletes a route
@@ -255,18 +288,59 @@ func (h *AdminHandler) DeleteRoute(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "route deleted successfully"})
 }
 
-// GetEnabledRoutes returns all enabled routes (for internal use)
+// GetEnabledRoutes returns all enabled routes that should be pushed to clients
 func (h *AdminHandler) GetEnabledRoutes() ([]string, error) {
 	var routes []database.Route
-	if err := h.db.Where("enabled = ?", true).Find(&routes).Error; err != nil {
+	if err := h.db.Where("enabled = ? AND push_to_client = ?", true, true).Find(&routes).Error; err != nil {
 		return nil, err
 	}
 
 	cidrs := make([]string, len(routes))
-	for i, route := range routes {
-		cidrs[i] = route.CIDR
+	for i, r := range routes {
+		cidrs[i] = r.CIDR
 	}
 	return cidrs, nil
+}
+
+// ApplyRoutes reloads and applies all routes to the server routing table
+func (h *AdminHandler) ApplyRoutes(c *gin.Context) {
+	// Load all enabled routes from database
+	var routes []database.Route
+	if err := h.db.Where("enabled = ?", true).Find(&routes).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch routes"})
+		return
+	}
+
+	// Build route config from database
+	config := route.Config{
+		DefaultDevice: h.wgDevice,
+	}
+
+	for _, r := range routes {
+		config.Routes = append(config.Routes, route.Route{
+			CIDR:    r.CIDR,
+			Gateway: r.Gateway,
+			Device:  r.Device,
+		})
+	}
+
+	// Cleanup existing routes and apply new ones
+	if h.routeManager != nil {
+		h.routeManager.Cleanup()
+	}
+	newManager := route.NewManager(config)
+	if err := newManager.Apply(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to apply routes: " + err.Error()})
+		return
+	}
+
+	// Update the manager reference
+	h.routeManager = newManager
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "routes applied successfully",
+		"count":   len(config.Routes),
+	})
 }
 
 // ============ NAT Rule Management ============
