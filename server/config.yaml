@@ -36,6 +36,15 @@ wireguard:
   # Server endpoint (public address that clients will connect to)
   endpoint: "vpn.example.com:51820"
 
+  # Routes to push to clients (CIDR format)
+  # These are ADDITIONAL routes beyond the VPN subnet
+  # The VPN subnet is automatically included
+  # Examples:
+  routes: []
+    # - "192.168.1.0/24"  # Access to internal network
+    # - "10.0.0.0/8"      # Access to private networks
+    # - "0.0.0.0/0"       # Route ALL traffic through VPN
+
   # Server private key (leave empty to generate new)
   # private_key: ""
 

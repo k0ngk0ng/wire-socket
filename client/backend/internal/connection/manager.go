@@ -124,7 +124,7 @@ func (m *Manager) Connect(req ConnectRequest) error {
 
 func (m *Manager) doConnect(req ConnectRequest) {
 	// Step 1: Authenticate with server and get WireGuard config
-	wgConfig, token, tunnelURL, err := m.authenticate(req)
+	wgConfig, token, tunnelURL, routes, err := m.authenticate(req)
 	if err != nil {
 		m.setError(fmt.Errorf("authentication failed: %w", err))
 		return
@@ -170,6 +170,12 @@ func (m *Manager) doConnect(req ConnectRequest) {
 
 	// Set endpoint to localhost (wstunnel)
 	wgConfig.Peer.Endpoint = "127.0.0.1:51820"
+
+	// Use routes from server if provided, otherwise use AllowedIPs
+	if len(routes) > 0 {
+		wgConfig.Peer.AllowedIPs = strings.Join(routes, ",")
+		fmt.Printf("Using routes from server: %v\n", routes)
+	}
 
 	if err := wgInterface.Configure(wgConfig); err != nil {
 		wstunnelClient.Stop()
@@ -264,7 +270,7 @@ func (m *Manager) GetStatus() Status {
 }
 
 // authenticate performs authentication with the server
-func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string, string, error) {
+func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string, string, []string, error) {
 	// Build API URL - normalize the server address
 	apiBase := normalizeServerURL(req.ServerAddress)
 	apiURL := apiBase + "/api/auth/login"
@@ -277,18 +283,18 @@ func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string,
 
 	jsonData, err := json.Marshal(loginData)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", nil, err
 	}
 
 	// Send login request
 	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", "", fmt.Errorf("authentication failed with status: %d", resp.StatusCode)
+		return nil, "", "", nil, fmt.Errorf("authentication failed with status: %d", resp.StatusCode)
 	}
 
 	// Parse response
@@ -297,7 +303,7 @@ func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string,
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
-		return nil, "", "", err
+		return nil, "", "", nil, err
 	}
 
 	// Get WireGuard config
@@ -308,24 +314,25 @@ func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string,
 	client := &http.Client{}
 	configResp, err := client.Do(configReq)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", nil, err
 	}
 	defer configResp.Body.Close()
 
 	if configResp.StatusCode != http.StatusOK {
-		return nil, "", "", fmt.Errorf("failed to get config with status: %d", configResp.StatusCode)
+		return nil, "", "", nil, fmt.Errorf("failed to get config with status: %d", configResp.StatusCode)
 	}
 
 	var configData struct {
 		Config    wireguard.WGConfig `json:"config"`
 		TunnelURL string             `json:"tunnel_url"`
+		Routes    []string           `json:"routes"`
 	}
 
 	if err := json.NewDecoder(configResp.Body).Decode(&configData); err != nil {
-		return nil, "", "", err
+		return nil, "", "", nil, err
 	}
 
-	return &configData.Config, loginResp.Token, configData.TunnelURL, nil
+	return &configData.Config, loginResp.Token, configData.TunnelURL, configData.Routes, nil
 }
 
 func (m *Manager) setError(err error) {

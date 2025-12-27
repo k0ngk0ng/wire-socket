@@ -16,15 +16,19 @@ type Router struct {
 	db          *database.DB
 	configGen   *wireguard.ConfigGenerator
 	tunnelURL   string
+	routes      []string // Additional routes to push to clients
+	subnet      string   // VPN subnet (automatically included in routes)
 }
 
 // NewRouter creates a new API router
-func NewRouter(authHandler *auth.Handler, db *database.DB, configGen *wireguard.ConfigGenerator, tunnelURL string) *Router {
+func NewRouter(authHandler *auth.Handler, db *database.DB, configGen *wireguard.ConfigGenerator, tunnelURL string, routes []string, subnet string) *Router {
 	return &Router{
 		authHandler: authHandler,
 		db:          db,
 		configGen:   configGen,
 		tunnelURL:   tunnelURL,
+		routes:      routes,
+		subnet:      subnet,
 	}
 }
 
@@ -90,10 +94,15 @@ func (r *Router) GetConfig(c *gin.Context) {
 		return
 	}
 
+	// Build routes: subnet + additional routes
+	allRoutes := []string{r.subnet}
+	allRoutes = append(allRoutes, r.routes...)
+
 	c.JSON(http.StatusOK, gin.H{
 		"config":     config,
 		"ini_format": config.ToINIFormat(),
 		"tunnel_url": r.tunnelURL,
+		"routes":     allRoutes,
 	})
 }
 

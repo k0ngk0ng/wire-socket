@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"wire-socket-server/internal/api"
 	"wire-socket-server/internal/auth"
@@ -35,14 +36,15 @@ type Config struct {
 		DSN    string `yaml:"dsn"`
 	} `yaml:"database"`
 	WireGuard struct {
-		DeviceName string `yaml:"device_name"`
-		ListenPort int    `yaml:"listen_port"`
-		Subnet     string `yaml:"subnet"`
-		DNS        string `yaml:"dns"`
-		Endpoint   string `yaml:"endpoint"`
-		PrivateKey string `yaml:"private_key"`
-		PublicKey  string `yaml:"public_key"`
-		Mode       string `yaml:"mode"` // "kernel" or "userspace"
+		DeviceName string   `yaml:"device_name"`
+		ListenPort int      `yaml:"listen_port"`
+		Subnet     string   `yaml:"subnet"`
+		DNS        string   `yaml:"dns"`
+		Endpoint   string   `yaml:"endpoint"`
+		PrivateKey string   `yaml:"private_key"`
+		PublicKey  string   `yaml:"public_key"`
+		Mode       string   `yaml:"mode"`   // "kernel" or "userspace"
+		Routes     []string `yaml:"routes"` // Routes to push to clients
 	} `yaml:"wireguard"`
 	Auth struct {
 		JWTSecret string `yaml:"jwt_secret"`
@@ -140,8 +142,13 @@ func main() {
 
 	log.Printf("WireGuard device %s configured successfully", config.WireGuard.DeviceName)
 
-	// Set address for config file persistence (use first IP from subnet as server address)
-	wgManager.SetAddress(config.WireGuard.Subnet)
+	// Set server address (first usable IP in subnet, e.g., 10.250.2.0/24 -> 10.250.2.1/24)
+	serverAddr, err := getServerAddress(config.WireGuard.Subnet)
+	if err != nil {
+		log.Fatalf("Failed to calculate server address: %v", err)
+	}
+	wgManager.SetAddress(serverAddr)
+	log.Printf("WireGuard server address: %s", serverAddr)
 
 	// Load existing peers from config file (if any)
 	if err := wgManager.LoadPeersFromConfig(); err != nil {
@@ -209,7 +216,7 @@ func main() {
 		}
 		tunnelURL = "wss://" + config.Tunnel.PublicHost + path
 	}
-	apiRouter := api.NewRouter(authHandler, db, configGen, tunnelURL)
+	apiRouter := api.NewRouter(authHandler, db, configGen, tunnelURL, config.WireGuard.Routes, config.WireGuard.Subnet)
 	apiRouter.SetupRoutes(engine)
 
 	// Start server
@@ -343,4 +350,30 @@ func derivePublicKey(privateKeyStr string) (string, error) {
 		return "", fmt.Errorf("invalid private key: %w", err)
 	}
 	return privateKey.PublicKey().String(), nil
+}
+
+// getServerAddress returns the first usable IP in a subnet as the server address
+// e.g., "10.250.2.0/24" -> "10.250.2.1/24"
+func getServerAddress(subnet string) (string, error) {
+	ip, ipNet, err := net.ParseCIDR(subnet)
+	if err != nil {
+		return "", fmt.Errorf("invalid subnet %s: %w", subnet, err)
+	}
+
+	// Get the network address
+	networkIP := ip.Mask(ipNet.Mask)
+
+	// Convert to 4-byte representation for IPv4
+	ip4 := networkIP.To4()
+	if ip4 == nil {
+		return "", fmt.Errorf("only IPv4 subnets are supported")
+	}
+
+	// Increment to get first usable IP (x.x.x.1)
+	ip4[3]++
+
+	// Get prefix length
+	ones, _ := ipNet.Mask.Size()
+
+	return fmt.Sprintf("%s/%d", ip4.String(), ones), nil
 }
