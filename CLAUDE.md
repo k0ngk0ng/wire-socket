@@ -137,6 +137,7 @@ The client backend runs as a system service (Windows Service/macOS LaunchDaemon/
 ### Electron Frontend Architecture
 
 - **`src/main/index.js`**: Main process
+  - Automatic service installation with privilege escalation (`@vscode/sudo-prompt`)
   - IPC handlers for backend communication
   - System tray integration
   - Window management
@@ -148,6 +149,8 @@ The client backend runs as a system service (Windows Service/macOS LaunchDaemon/
 - **`public/index.html`**: UI
   - Communicates with client backend on localhost:41945
   - Shows connection status, traffic stats, server list
+
+**Service Auto-Installation**: The Electron app automatically installs and starts the backend service on first launch, requesting administrator password via system dialog.
 
 ### Traffic Flow
 
@@ -188,9 +191,13 @@ auth:
 tunnel:
   enabled: true              # Built-in WebSocket tunnel
   listen_addr: "0.0.0.0:443"
+  public_host: "vpn.example.com"  # Public hostname for clients
+  path: "/"                  # WebSocket path (for nginx reverse proxy)
   # tls_cert: ""             # Optional: for WSS
   # tls_key: ""
 ```
+
+**Tunnel URL**: The server automatically builds the tunnel URL from `public_host` and `path`, returning it to clients in the config response (e.g., `wss://vpn.example.com/tunnel`).
 
 ## Important Implementation Details
 
@@ -306,13 +313,30 @@ sudo ./wire-socket-client  # Logs to stdout
 - If using `mode: "userspace"` (default): Ensure you have root/sudo privileges for TUN device creation
 - On Linux with kernel mode: Load kernel module: `sudo modprobe wireguard`
 
-**"Permission denied"**
+**"Interface name must be utun[0-9]*"** (macOS)
+- macOS requires TUN interfaces to use the `utun` naming convention
+- The client automatically uses `utun` prefix on macOS
+
+**"Permission denied" or "operation not permitted"**
 - Run with sudo: `sudo ./wire-socket-server` or `sudo ./wire-socket-client`
+- On macOS, creating TUN devices requires root privileges
 
 **"Connection failed"**
 - Ensure server is running: `ps aux | grep wire-socket-server`
 - Verify ports open: 8080 (API), 443 (tunnel), 51820 (WireGuard UDP)
 - Check credentials: default is admin/admin123
+
+**nginx Reverse Proxy for WebSocket Tunnel**
+```nginx
+location /tunnel {
+    proxy_pass http://127.0.0.1:8443;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 86400;
+}
+```
 
 ## Security Notes
 

@@ -124,7 +124,7 @@ func (m *Manager) Connect(req ConnectRequest) error {
 
 func (m *Manager) doConnect(req ConnectRequest) {
 	// Step 1: Authenticate with server and get WireGuard config
-	wgConfig, token, err := m.authenticate(req)
+	wgConfig, token, tunnelURL, err := m.authenticate(req)
 	if err != nil {
 		m.setError(fmt.Errorf("authentication failed: %w", err))
 		return
@@ -134,11 +134,14 @@ func (m *Manager) doConnect(req ConnectRequest) {
 	m.assignedIP = wgConfig.Address
 
 	// Step 2: Start wstunnel client (built-in)
-	// Build WebSocket URL from tunnel URL or server address
-	wsURL, err := buildWebSocketURL(req.TunnelURL, req.ServerAddress)
-	if err != nil {
-		m.setError(fmt.Errorf("invalid tunnel URL: %w", err))
-		return
+	// Use tunnel URL from server response, fallback to request's TunnelURL or ServerAddress
+	wsURL := tunnelURL
+	if wsURL == "" {
+		wsURL, err = buildWebSocketURL(req.TunnelURL, req.ServerAddress)
+		if err != nil {
+			m.setError(fmt.Errorf("invalid tunnel URL: %w", err))
+			return
+		}
 	}
 
 	wstunnelClient := wstunnel.NewClient(wstunnel.Config{
@@ -158,7 +161,7 @@ func (m *Manager) doConnect(req ConnectRequest) {
 	time.Sleep(1 * time.Second)
 
 	// Step 3: Create and configure WireGuard interface
-	wgInterface, err := wireguard.NewInterface("wg-vpn")
+	wgInterface, err := wireguard.NewInterface("")
 	if err != nil {
 		wstunnelClient.Stop()
 		m.setError(fmt.Errorf("failed to create WireGuard interface: %w", err))
@@ -261,12 +264,10 @@ func (m *Manager) GetStatus() Status {
 }
 
 // authenticate performs authentication with the server
-func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string, error) {
-	// Build API URL
-	apiURL := fmt.Sprintf("https://%s/api/auth/login", req.ServerAddress)
-	if req.ServerAddress[:4] != "http" {
-		apiURL = fmt.Sprintf("http://%s/api/auth/login", req.ServerAddress)
-	}
+func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string, string, error) {
+	// Build API URL - normalize the server address
+	apiBase := normalizeServerURL(req.ServerAddress)
+	apiURL := apiBase + "/api/auth/login"
 
 	// Prepare login request
 	loginData := map[string]interface{}{
@@ -276,18 +277,18 @@ func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string,
 
 	jsonData, err := json.Marshal(loginData)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	// Send login request
 	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("authentication failed with status: %d", resp.StatusCode)
+		return nil, "", "", fmt.Errorf("authentication failed with status: %d", resp.StatusCode)
 	}
 
 	// Parse response
@@ -296,34 +297,35 @@ func (m *Manager) authenticate(req ConnectRequest) (*wireguard.WGConfig, string,
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	// Get WireGuard config
-	configURL := fmt.Sprintf("http://%s/api/config", req.ServerAddress)
+	configURL := apiBase + "/api/config"
 	configReq, _ := http.NewRequest("GET", configURL, nil)
 	configReq.Header.Set("Authorization", "Bearer "+loginResp.Token)
 
 	client := &http.Client{}
 	configResp, err := client.Do(configReq)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	defer configResp.Body.Close()
 
 	if configResp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("failed to get config with status: %d", configResp.StatusCode)
+		return nil, "", "", fmt.Errorf("failed to get config with status: %d", configResp.StatusCode)
 	}
 
 	var configData struct {
-		Config wireguard.WGConfig `json:"config"`
+		Config    wireguard.WGConfig `json:"config"`
+		TunnelURL string             `json:"tunnel_url"`
 	}
 
 	if err := json.NewDecoder(configResp.Body).Decode(&configData); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	return &configData.Config, loginResp.Token, nil
+	return &configData.Config, loginResp.Token, configData.TunnelURL, nil
 }
 
 func (m *Manager) setError(err error) {
@@ -387,6 +389,38 @@ func (m *Manager) Close() {
 	m.Disconnect()
 }
 
+// normalizeServerURL normalizes a server address to a full URL
+// Supported formats:
+//   - https://example.com -> https://example.com
+//   - http://example.com -> http://example.com
+//   - example.com -> https://example.com (defaults to https)
+//   - example.com:8080 -> http://example.com:8080 (non-standard port defaults to http)
+//   - 192.168.1.100:8080 -> http://192.168.1.100:8080
+func normalizeServerURL(addr string) string {
+	// Remove trailing slash
+	addr = strings.TrimSuffix(addr, "/")
+
+	// If already has scheme, return as-is
+	if strings.HasPrefix(addr, "https://") || strings.HasPrefix(addr, "http://") {
+		return addr
+	}
+
+	// Check if it has a port
+	parts := splitHostPort(addr)
+	if len(parts) == 2 {
+		port := parts[1]
+		// Standard HTTPS port or no port -> use https
+		if port == "443" {
+			return "https://" + parts[0]
+		}
+		// Non-standard port -> use http
+		return "http://" + addr
+	}
+
+	// No port specified -> default to https
+	return "https://" + addr
+}
+
 // getConfigDir returns the configuration directory path
 func getConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
@@ -421,16 +455,13 @@ func buildWebSocketURL(tunnelURL, serverAddress string) (string, error) {
 		return convertToWebSocketURL(tunnelURL)
 	}
 
-	// Fall back to server address with default port 443
+	// Fall back to server address
 	if serverAddress == "" {
 		return "", errors.New("either tunnel_url or server_address must be provided")
 	}
 
-	// Extract host from server address (remove port if present)
-	parts := splitHostPort(serverAddress)
-	host := parts[0]
-
-	return fmt.Sprintf("wss://%s:443", host), nil
+	// Use the server address as tunnel URL (convert to WebSocket)
+	return convertToWebSocketURL(serverAddress)
 }
 
 // convertToWebSocketURL converts http(s) URLs to ws(s) URLs

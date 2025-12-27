@@ -9,6 +9,7 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 - **Secure**: WireGuard encryption with WebSocket tunneling
 - **All-in-One**: Client bundles all dependencies
 - **Modern UI**: Electron desktop app with system tray
+- **Auto Service Install**: Automatically installs and starts backend service with privilege escalation
 
 ## Quick Start
 
@@ -44,9 +45,29 @@ The server includes a built-in WebSocket tunnel (port 443) and userspace WireGua
 Download from [Releases](../../releases) or use built package in `client/dist/`.
 
 1. Launch WireSocket
-2. Enter server address (e.g., `your-server-ip:8080`)
+2. Enter server address (e.g., `https://vpn.example.com` or `your-server-ip:8080`)
 3. Login (default: `admin` / `admin123`)
 4. Click "Connect"
+
+**First Launch**: The app will request administrator password to install the VPN service. This only happens once.
+
+**nginx Reverse Proxy**: If using nginx, configure WebSocket proxy:
+```nginx
+location /tunnel {
+    proxy_pass http://127.0.0.1:8443;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 86400;
+}
+```
+
+And add to server `config.yaml`:
+```yaml
+tunnel:
+  public_host: "vpn.example.com"
+  path: "/tunnel"
+```
 
 ## Documentation
 

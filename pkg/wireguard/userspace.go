@@ -63,7 +63,8 @@ func NewUserspaceBackend(cfg UserspaceConfig) (*UserspaceBackend, error) {
 	}
 
 	// Create WireGuard device
-	logger := device.NewLogger(device.LogLevelError, fmt.Sprintf("(%s) ", actualName))
+	// Using LogLevelVerbose for debugging - change to LogLevelError in production
+	logger := device.NewLogger(device.LogLevelVerbose, fmt.Sprintf("(%s) ", actualName))
 	wgDev := device.NewDevice(tunDev, conn.NewDefaultBind(), logger)
 
 	return &UserspaceBackend{

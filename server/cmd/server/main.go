@@ -12,6 +12,8 @@ import (
 	"wire-socket-server/internal/wireguard"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/yaml.v3"
 )
 
@@ -49,6 +51,7 @@ type Config struct {
 		Enabled    bool   `yaml:"enabled"`
 		ListenAddr string `yaml:"listen_addr"`
 		Path       string `yaml:"path"`
+		PublicHost string `yaml:"public_host"` // Public hostname for clients (e.g., vpn.example.com)
 		TLSCert    string `yaml:"tls_cert"`
 		TLSKey     string `yaml:"tls_key"`
 	} `yaml:"tunnel"`
@@ -100,15 +103,34 @@ func main() {
 	log.Printf("WireGuard manager initialized successfully (mode: %s)", wgMode)
 
 	// Generate or load WireGuard server keys
+	// Priority: 1. config.yaml, 2. existing wg config file, 3. generate new
 	privateKey, publicKey := config.WireGuard.PrivateKey, config.WireGuard.PublicKey
 	if privateKey == "" || publicKey == "" {
-		log.Println("Generating new WireGuard key pair...")
-		privateKey, publicKey, err = wireguard.GenerateKeyPair()
-		if err != nil {
-			log.Fatalf("Failed to generate key pair: %v", err)
+		// Try to load from existing WireGuard config file
+		existingConfig, err := wgManager.LoadConfigFile()
+		if err == nil && existingConfig != nil && existingConfig.PrivateKey != "" {
+			log.Println("Loading WireGuard keys from existing config file...")
+			privateKey = existingConfig.PrivateKey
+			// Derive public key from private key
+			publicKey, err = derivePublicKey(privateKey)
+			if err != nil {
+				log.Printf("Warning: failed to derive public key: %v, generating new keys", err)
+				privateKey, publicKey, err = wireguard.GenerateKeyPair()
+				if err != nil {
+					log.Fatalf("Failed to generate key pair: %v", err)
+				}
+			} else {
+				log.Printf("Loaded existing keys - Public: %s", publicKey)
+			}
+		} else {
+			log.Println("Generating new WireGuard key pair...")
+			privateKey, publicKey, err = wireguard.GenerateKeyPair()
+			if err != nil {
+				log.Fatalf("Failed to generate key pair: %v", err)
+			}
+			log.Printf("Generated keys - Public: %s", publicKey)
+			log.Println("TIP: Save these keys in config.yaml to persist across restarts")
 		}
-		log.Printf("Generated keys - Public: %s", publicKey)
-		log.Println("Please save these keys in your config file!")
 	}
 
 	// Configure WireGuard device
@@ -147,6 +169,12 @@ func main() {
 		return
 	}
 
+	// Ensure server record in database has the correct public key
+	// This handles the case where keys are generated on startup
+	if err := syncServerPublicKey(db, config, publicKey); err != nil {
+		log.Printf("Warning: failed to sync server public key: %v", err)
+	}
+
 	// Initialize config generator
 	configGen := wireguard.NewConfigGenerator(db, wgManager)
 
@@ -172,7 +200,16 @@ func main() {
 	})
 
 	// Set up API routes
-	apiRouter := api.NewRouter(authHandler, db, configGen)
+	// Build tunnel URL from public_host and path
+	tunnelURL := ""
+	if config.Tunnel.PublicHost != "" {
+		path := config.Tunnel.Path
+		if path == "" {
+			path = "/"
+		}
+		tunnelURL = "wss://" + config.Tunnel.PublicHost + path
+	}
+	apiRouter := api.NewRouter(authHandler, db, configGen, tunnelURL)
 	apiRouter.SetupRoutes(engine)
 
 	// Start server
@@ -254,11 +291,14 @@ func initializeDatabase(db *database.DB, config *Config, publicKey string) error
 
 	// Create default admin user
 	// Password: admin123 (change this immediately!)
-	hashedPassword := "$2a$10$rLZYJ5Hf0K8qH9m5lHf0K8qH9m5lHf0K8qH9m5lHf0K8qH9m5lHf0" // Hash for "admin123"
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
 	adminUser := &database.User{
 		Username:     "admin",
 		Email:        "admin@example.com",
-		PasswordHash: hashedPassword,
+		PasswordHash: string(hashedPassword),
 		IsActive:     true,
 	}
 
@@ -272,4 +312,35 @@ func initializeDatabase(db *database.DB, config *Config, publicKey string) error
 	log.Println("  *** Please change this password immediately! ***")
 
 	return nil
+}
+
+// syncServerPublicKey updates the server record in the database with the current public key
+// This ensures the database always has the key that matches the running WireGuard instance
+func syncServerPublicKey(db *database.DB, config *Config, publicKey string) error {
+	var server database.Server
+	if err := db.First(&server).Error; err != nil {
+		return fmt.Errorf("no server record found: %w", err)
+	}
+
+	if server.PublicKey != publicKey {
+		log.Printf("Updating server public key in database (was: %s..., now: %s...)",
+			server.PublicKey[:8], publicKey[:8])
+		server.PublicKey = publicKey
+		server.PrivateKey = config.WireGuard.PrivateKey
+		if err := db.Save(&server).Error; err != nil {
+			return fmt.Errorf("failed to update server: %w", err)
+		}
+		log.Println("Server public key updated in database")
+	}
+
+	return nil
+}
+
+// derivePublicKey derives the public key from a WireGuard private key
+func derivePublicKey(privateKeyStr string) (string, error) {
+	privateKey, err := wgtypes.ParseKey(privateKeyStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid private key: %w", err)
+	}
+	return privateKey.PublicKey().String(), nil
 }
