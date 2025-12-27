@@ -128,9 +128,10 @@ func (m *Manager) SetAddress(address string) {
 // AddPeer adds a new peer to the WireGuard device
 func (m *Manager) AddPeer(publicKey, allowedIP string) error {
 	err := m.backend.AddPeer(wg.PeerConfig{
-		PublicKey:           publicKey,
-		AllowedIPs:          []string{allowedIP},
-		PersistentKeepalive: 25 * time.Second,
+		PublicKey:  publicKey,
+		AllowedIPs: []string{allowedIP},
+		// Note: Server doesn't need PersistentKeepalive - only clients do
+		// The client initiates and maintains the connection
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add peer: %w", err)

@@ -3,6 +3,7 @@ package wireguard
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"time"
 
 	wg "wire-socket/pkg/wireguard"
@@ -67,7 +68,12 @@ func NewInterface(name string) (*Interface, error) {
 func NewInterfaceWithConfig(cfg InterfaceConfig) (*Interface, error) {
 	name := cfg.Name
 	if name == "" {
-		name = "wg-vpn"
+		// macOS requires utun[0-9]* format
+		if runtime.GOOS == "darwin" {
+			name = "utun"
+		} else {
+			name = "wg-vpn"
+		}
 	}
 
 	mode := cfg.Mode

@@ -15,14 +15,16 @@ type Router struct {
 	authHandler *auth.Handler
 	db          *database.DB
 	configGen   *wireguard.ConfigGenerator
+	tunnelURL   string
 }
 
 // NewRouter creates a new API router
-func NewRouter(authHandler *auth.Handler, db *database.DB, configGen *wireguard.ConfigGenerator) *Router {
+func NewRouter(authHandler *auth.Handler, db *database.DB, configGen *wireguard.ConfigGenerator, tunnelURL string) *Router {
 	return &Router{
 		authHandler: authHandler,
 		db:          db,
 		configGen:   configGen,
+		tunnelURL:   tunnelURL,
 	}
 }
 
@@ -89,8 +91,9 @@ func (r *Router) GetConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"config": config,
+		"config":     config,
 		"ini_format": config.ToINIFormat(),
+		"tunnel_url": r.tunnelURL,
 	})
 }
 

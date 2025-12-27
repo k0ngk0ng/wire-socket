@@ -53,6 +53,10 @@ tunnel:
   # Tunnel listen address (WebSocket)
   listen_addr: "0.0.0.0:443"
 
+  # Public hostname for clients (used to build tunnel URL)
+  # The full URL will be: wss://{public_host}{path}
+  public_host: "vpn.example.com"
+
   # Path prefix for WebSocket upgrade (useful for nginx reverse proxy)
   # Similar to wstunnel's --restrict-http-upgrade-path-prefix
   # Examples: "/", "/tunnel", "/wg", "/secret-path"
