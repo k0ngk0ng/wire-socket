@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 	"wire-socket-client/internal/wireguard"
@@ -35,7 +37,8 @@ type ServerConfig struct {
 
 // ConnectRequest represents connection parameters
 type ConnectRequest struct {
-	ServerAddress string `json:"server_address"`
+	ServerAddress string `json:"server_address"` // API address (e.g., "192.168.1.100:8080")
+	TunnelURL     string `json:"tunnel_url"`     // Tunnel URL (e.g., "https://vpn.example.com/tunnel")
 	Username      string `json:"username"`
 	Password      string `json:"password"`
 }
@@ -131,17 +134,16 @@ func (m *Manager) doConnect(req ConnectRequest) {
 	m.assignedIP = wgConfig.Address
 
 	// Step 2: Start wstunnel client (built-in)
-	serverURL := fmt.Sprintf("wss://%s:443", req.ServerAddress)
-	// If server address already includes port, use it directly
-	if len(req.ServerAddress) > 0 && req.ServerAddress[0] >= '0' && req.ServerAddress[0] <= '9' {
-		// Looks like IP:port or just IP
-		parts := splitHostPort(req.ServerAddress)
-		serverURL = fmt.Sprintf("wss://%s:443", parts[0])
+	// Build WebSocket URL from tunnel URL or server address
+	wsURL, err := buildWebSocketURL(req.TunnelURL, req.ServerAddress)
+	if err != nil {
+		m.setError(fmt.Errorf("invalid tunnel URL: %w", err))
+		return
 	}
 
 	wstunnelClient := wstunnel.NewClient(wstunnel.Config{
 		LocalAddr: "127.0.0.1:51820",
-		ServerURL: serverURL,
+		ServerURL: wsURL,
 		Insecure:  true, // TODO: Add proper TLS verification
 	})
 
@@ -403,4 +405,66 @@ func splitHostPort(addr string) []string {
 		}
 	}
 	return []string{addr}
+}
+
+// buildWebSocketURL converts a tunnel URL (https:// or http://) to WebSocket URL (wss:// or ws://)
+// If tunnelURL is empty, it falls back to using serverAddress with default port 443
+// Supported formats:
+//   - https://example.com/tunnel -> wss://example.com/tunnel
+//   - http://example.com/tunnel -> ws://example.com/tunnel
+//   - wss://example.com/tunnel -> wss://example.com/tunnel (unchanged)
+//   - example.com/tunnel -> wss://example.com/tunnel
+//   - example.com:8443/tunnel -> wss://example.com:8443/tunnel
+func buildWebSocketURL(tunnelURL, serverAddress string) (string, error) {
+	// If tunnel URL is provided, use it
+	if tunnelURL != "" {
+		return convertToWebSocketURL(tunnelURL)
+	}
+
+	// Fall back to server address with default port 443
+	if serverAddress == "" {
+		return "", errors.New("either tunnel_url or server_address must be provided")
+	}
+
+	// Extract host from server address (remove port if present)
+	parts := splitHostPort(serverAddress)
+	host := parts[0]
+
+	return fmt.Sprintf("wss://%s:443", host), nil
+}
+
+// convertToWebSocketURL converts http(s) URLs to ws(s) URLs
+func convertToWebSocketURL(rawURL string) (string, error) {
+	// Handle URLs without scheme
+	if !strings.Contains(rawURL, "://") {
+		rawURL = "https://" + rawURL
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	// Convert scheme
+	switch parsed.Scheme {
+	case "https":
+		parsed.Scheme = "wss"
+	case "http":
+		parsed.Scheme = "ws"
+	case "wss", "ws":
+		// Already a WebSocket URL
+	default:
+		return "", fmt.Errorf("unsupported URL scheme: %s", parsed.Scheme)
+	}
+
+	// Ensure port is set for wss
+	if parsed.Port() == "" {
+		if parsed.Scheme == "wss" {
+			parsed.Host = parsed.Host + ":443"
+		} else {
+			parsed.Host = parsed.Host + ":80"
+		}
+	}
+
+	return parsed.String(), nil
 }
