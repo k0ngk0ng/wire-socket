@@ -51,17 +51,17 @@ Usage: $0 [OPTIONS]
 Options:
     -s, --server        Build server only
     -c, --client        Build client (frontend + bundled backend)
-    -a, --all           Build everything (server + client)
+    -a, --all           Build everything (server + client) [default]
     -p, --platform      Target platform for client (mac|win|linux|all)
                         Default: current platform
     --skip-deps         Skip npm install and go mod tidy
     -h, --help          Show this help message
 
 Examples:
-    $0 --all                    # Build everything for current platform
+    $0                          # Build everything for current platform
     $0 --server                 # Build server only
     $0 --client --platform mac  # Build client for macOS
-    $0 --all --platform all     # Build everything for all platforms
+    $0 --platform all           # Build everything for all platforms
 
 Output:
     Server:   ./server/dist/wire-socket-server
@@ -104,10 +104,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# If no build target specified, show help
+# If no build target specified, default to --all
 if [[ "$BUILD_SERVER" == "false" && "$BUILD_CLIENT" == "false" && "$BUILD_ALL" == "false" ]]; then
-    show_help
-    exit 0
+    BUILD_ALL=true
 fi
 
 # If --all is specified, build both
