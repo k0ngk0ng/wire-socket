@@ -45,6 +45,7 @@ type Config struct {
 	Tunnel struct {
 		Enabled    bool   `yaml:"enabled"`
 		ListenAddr string `yaml:"listen_addr"`
+		Path       string `yaml:"path"`
 		TLSCert    string `yaml:"tls_cert"`
 		TLSKey     string `yaml:"tls_key"`
 	} `yaml:"tunnel"`
@@ -175,6 +176,7 @@ func main() {
 		tunnelServer = tunnel.NewServer(tunnel.Config{
 			ListenAddr: config.Tunnel.ListenAddr,
 			TargetAddr: targetAddr,
+			PathPrefix: config.Tunnel.Path,
 			TLSCert:    config.Tunnel.TLSCert,
 			TLSKey:     config.Tunnel.TLSKey,
 		})

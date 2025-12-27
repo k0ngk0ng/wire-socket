@@ -26,6 +26,7 @@ const (
 type Server struct {
 	listenAddr string // WebSocket listen address (e.g., ":443")
 	targetAddr string // UDP target address (e.g., "127.0.0.1:51820")
+	pathPrefix string // Path prefix for WebSocket upgrade (e.g., "/tunnel")
 	tlsCert    string // TLS certificate file path
 	tlsKey     string // TLS key file path
 	upgrader   websocket.Upgrader
@@ -38,15 +39,26 @@ type Server struct {
 type Config struct {
 	ListenAddr string // WebSocket listen address
 	TargetAddr string // UDP target address (WireGuard)
+	PathPrefix string // Path prefix for WebSocket upgrade (default: "/")
 	TLSCert    string // TLS certificate file (optional, for WSS)
 	TLSKey     string // TLS key file (optional, for WSS)
 }
 
 // NewServer creates a new WebSocket tunnel server
 func NewServer(cfg Config) *Server {
+	pathPrefix := cfg.PathPrefix
+	if pathPrefix == "" {
+		pathPrefix = "/"
+	}
+	// Ensure path starts with /
+	if pathPrefix[0] != '/' {
+		pathPrefix = "/" + pathPrefix
+	}
+
 	return &Server{
 		listenAddr: cfg.ListenAddr,
 		targetAddr: cfg.TargetAddr,
+		pathPrefix: pathPrefix,
 		tlsCert:    cfg.TLSCert,
 		tlsKey:     cfg.TLSKey,
 		upgrader: websocket.Upgrader{
@@ -68,7 +80,7 @@ func (s *Server) Start() error {
 	s.mu.Unlock()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleWebSocket)
+	mux.HandleFunc(s.pathPrefix, s.handleWebSocket)
 
 	s.server = &http.Server{
 		Addr:    s.listenAddr,
@@ -77,10 +89,10 @@ func (s *Server) Start() error {
 
 	var err error
 	if s.tlsCert != "" && s.tlsKey != "" {
-		log.Printf("Starting WSS tunnel server on %s -> %s", s.listenAddr, s.targetAddr)
+		log.Printf("Starting WSS tunnel server on %s%s -> %s", s.listenAddr, s.pathPrefix, s.targetAddr)
 		err = s.server.ListenAndServeTLS(s.tlsCert, s.tlsKey)
 	} else {
-		log.Printf("Starting WS tunnel server on %s -> %s", s.listenAddr, s.targetAddr)
+		log.Printf("Starting WS tunnel server on %s%s -> %s", s.listenAddr, s.pathPrefix, s.targetAddr)
 		err = s.server.ListenAndServe()
 	}
 
