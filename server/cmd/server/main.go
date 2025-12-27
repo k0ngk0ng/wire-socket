@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"wire-socket-server/internal/admin"
 	"wire-socket-server/internal/api"
 	"wire-socket-server/internal/auth"
 	"wire-socket-server/internal/database"
@@ -252,6 +253,9 @@ func main() {
 
 	apiRouter := api.NewRouter(authHandler, adminHandler, db, configGen, tunnelURL, config.WireGuard.Subnet)
 	apiRouter.SetupRoutes(engine)
+
+	// Setup admin UI routes
+	admin.SetupRoutes(engine)
 
 	// Start server
 	log.Printf("Starting VPN server on %s", config.Server.Address)

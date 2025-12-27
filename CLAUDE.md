@@ -16,6 +16,7 @@ WireSocket is a cross-platform VPN solution with three main components:
 cd server
 go mod tidy
 go build -o wire-socket-server cmd/server/main.go
+go build -o wsctl cmd/wsctl/main.go  # CLI management tool
 ```
 
 ### Client Backend
@@ -274,6 +275,41 @@ sudo wg show
 # Check running processes
 ps aux | grep -E "wire-socket-server|wire-socket-client"
 ```
+
+## Admin Tools
+
+### Web Admin Interface
+Access the admin UI at `http://localhost:8080/admin` after starting the server.
+- Login with admin credentials
+- Manage users, routes, and NAT rules
+- Apply NAT rules without server restart
+
+### wsctl CLI Tool
+Command-line tool for server-side administration (reads config.yaml directly, no login required):
+
+```bash
+# User management
+wsctl user list
+wsctl user get 1
+wsctl user create alice alice@example.com secret123 --admin
+wsctl user update 1 --admin=true
+wsctl user delete 2
+
+# Route management
+wsctl route list
+wsctl route create 192.168.1.0/24 "Internal network"
+wsctl route update 1 --enabled=false
+wsctl route delete 1
+
+# NAT rule management
+wsctl nat list
+wsctl nat create masquerade --interface=eth0
+wsctl nat create snat --interface=wg0 --source=10.0.0.0/24 --dest=192.168.1.0/24 --to-source=192.168.1.1
+wsctl nat create dnat --interface=eth0 --protocol=tcp --port=8080 --to-dest=10.0.0.5:80
+wsctl nat apply  # Apply rules to iptables
+```
+
+Environment variable: `WSCTL_CONFIG` to specify config file path (default: `config.yaml`)
 
 ## Common Development Tasks
 

@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireSocket Admin</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-dark: #4338ca;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --text: #1f2937;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 { font-size: 1.5rem; }
+        .login-info { font-size: 0.875rem; opacity: 0.9; }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            border: none;
+            background: var(--card);
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .tab:hover { color: var(--primary); }
+        .tab.active {
+            background: var(--primary);
+            color: white;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .card-title { font-size: 1.125rem; font-weight: 600; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        tr:hover { background: #f9fafb; }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { opacity: 0.9; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:hover { opacity: 0.9; }
+        .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+        .btn-group { display: flex; gap: 4px; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: var(--card);
+            padding: 24px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .form-input, .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+        }
+        .form-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .form-checkbox input { width: 16px; height: 16px; }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 0.875rem;
+        }
+        .alert-success { background: #dcfce7; color: #166534; }
+        .alert-error { background: #fee2e2; color: #991b1b; }
+        .hidden { display: none !important; }
+        #login-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: var(--card);
+            padding: 32px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .login-title {
+            text-align: center;
+            margin-bottom: 24px;
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen">
+        <div class="login-card">
+            <h1 class="login-title">WireSocket Admin</h1>
+            <div id="login-error" class="alert alert-error hidden"></div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" id="login-username" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="login-password" class="form-input" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="main-app" class="hidden">
+        <div class="container">
+            <header>
+                <h1>WireSocket Admin</h1>
+                <div class="login-info">
+                    <span id="current-user"></span>
+                    <button class="btn btn-sm" onclick="logout()" style="margin-left:12px;background:rgba(255,255,255,0.2)">Logout</button>
+                </div>
+            </header>
+
+            <div class="tabs">
+                <button class="tab active" data-tab="users">Users</button>
+                <button class="tab" data-tab="routes">Routes</button>
+                <button class="tab" data-tab="nat">NAT Rules</button>
+            </div>
+
+            <div id="alert-container"></div>
+
+            <!-- Users Tab -->
+            <div id="tab-users" class="tab-content">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Users</span>
+                        <button class="btn btn-primary" onclick="showUserModal()">Add User</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Status</th>
+                                <th>Role</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Routes Tab -->
+            <div id="tab-routes" class="tab-content hidden">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Routes</span>
+                        <button class="btn btn-primary" onclick="showRouteModal()">Add Route</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>CIDR</th>
+                                <th>Comment</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="routes-table"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- NAT Tab -->
+            <div id="tab-nat" class="tab-content hidden">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">NAT Rules</span>
+                        <div class="btn-group">
+                            <button class="btn btn-success" onclick="applyNAT()">Apply Rules</button>
+                            <button class="btn btn-primary" onclick="showNATModal()">Add Rule</button>
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Type</th>
+                                <th>Interface</th>
+                                <th>Details</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nat-table"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Modal -->
+    <div id="user-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="user-modal-title">Add User</span>
+                <button class="modal-close" onclick="closeModal('user-modal')">&times;</button>
+            </div>
+            <form id="user-form">
+                <input type="hidden" id="user-id">
+                <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" id="user-username" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="user-email" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password <span id="pwd-hint" class="hidden">(leave empty to keep current)</span></label>
+                    <input type="password" id="user-password" class="form-input">
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="user-active" checked>
+                    <label for="user-active">Active</label>
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="user-admin">
+                    <label for="user-admin">Administrator</label>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Route Modal -->
+    <div id="route-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="route-modal-title">Add Route</span>
+                <button class="modal-close" onclick="closeModal('route-modal')">&times;</button>
+            </div>
+            <form id="route-form">
+                <input type="hidden" id="route-id">
+                <div class="form-group">
+                    <label class="form-label">CIDR</label>
+                    <input type="text" id="route-cidr" class="form-input" placeholder="192.168.1.0/24" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Comment</label>
+                    <input type="text" id="route-comment" class="form-input">
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="route-enabled" checked>
+                    <label for="route-enabled">Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- NAT Modal -->
+    <div id="nat-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="nat-modal-title">Add NAT Rule</span>
+                <button class="modal-close" onclick="closeModal('nat-modal')">&times;</button>
+            </div>
+            <form id="nat-form">
+                <input type="hidden" id="nat-id">
+                <div class="form-group">
+                    <label class="form-label">Type</label>
+                    <select id="nat-type" class="form-select" onchange="updateNATFields()">
+                        <option value="masquerade">Masquerade</option>
+                        <option value="snat">SNAT</option>
+                        <option value="dnat">DNAT</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Interface</label>
+                    <input type="text" id="nat-interface" class="form-input" placeholder="eth0" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Comment</label>
+                    <input type="text" id="nat-comment" class="form-input">
+                </div>
+                <div id="snat-fields" class="hidden">
+                    <div class="form-group">
+                        <label class="form-label">Source CIDR</label>
+                        <input type="text" id="nat-source" class="form-input" placeholder="10.0.0.0/24">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Destination CIDR</label>
+                        <input type="text" id="nat-destination" class="form-input" placeholder="192.168.1.0/24">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">To Source IP</label>
+                        <input type="text" id="nat-to-source" class="form-input" placeholder="192.168.1.1">
+                    </div>
+                </div>
+                <div id="dnat-fields" class="hidden">
+                    <div class="form-group">
+                        <label class="form-label">Protocol</label>
+                        <select id="nat-protocol" class="form-select">
+                            <option value="tcp">TCP</option>
+                            <option value="udp">UDP</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Port</label>
+                        <input type="number" id="nat-port" class="form-input" placeholder="8080">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">To Destination</label>
+                        <input type="text" id="nat-to-dest" class="form-input" placeholder="10.0.0.5:80">
+                    </div>
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="nat-enabled" checked>
+                    <label for="nat-enabled">Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('token');
+        let currentUser = null;
+
+        // API helper
+        async function api(endpoint, method = 'GET', body = null) {
+            const opts = {
+                method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+            if (body) opts.body = JSON.stringify(body);
+            const res = await fetch(`/api${endpoint}`, opts);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+
+        // Show alert
+        function showAlert(message, type = 'success') {
+            const container = document.getElementById('alert-container');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            container.appendChild(alert);
+            setTimeout(() => alert.remove(), 3000);
+        }
+
+        // Login
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            try {
+                const data = await api('/auth/login', 'POST', { username, password });
+                token = data.token;
+                currentUser = data.user;
+                localStorage.setItem('token', token);
+                showMainApp();
+            } catch (err) {
+                document.getElementById('login-error').textContent = err.message;
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        });
+
+        function logout() {
+            token = null;
+            currentUser = null;
+            localStorage.removeItem('token');
+            document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+        }
+
+        async function showMainApp() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            document.getElementById('current-user').textContent = currentUser?.username || 'Admin';
+            await loadUsers();
+        }
+
+        // Tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', async () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                tab.classList.add('active');
+                const tabId = tab.dataset.tab;
+                document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+                if (tabId === 'users') await loadUsers();
+                if (tabId === 'routes') await loadRoutes();
+                if (tabId === 'nat') await loadNAT();
+            });
+        });
+
+        // Modal helpers
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        // Users
+        async function loadUsers() {
+            try {
+                const data = await api('/admin/users');
+                const tbody = document.getElementById('users-table');
+                tbody.innerHTML = data.users.map(u => `
+                    <tr>
+                        <td>${u.id}</td>
+                        <td>${u.username}</td>
+                        <td>${u.email}</td>
+                        <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-danger'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+                        <td><span class="badge ${u.is_admin ? 'badge-info' : ''}">${u.is_admin ? 'Admin' : 'User'}</span></td>
+                        <td class="btn-group">
+                            <button class="btn btn-sm btn-primary" onclick="editUser(${u.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        function showUserModal(user = null) {
+            document.getElementById('user-modal-title').textContent = user ? 'Edit User' : 'Add User';
+            document.getElementById('user-id').value = user?.id || '';
+            document.getElementById('user-username').value = user?.username || '';
+            document.getElementById('user-email').value = user?.email || '';
+            document.getElementById('user-password').value = '';
+            document.getElementById('user-password').required = !user;
+            document.getElementById('pwd-hint').classList.toggle('hidden', !user);
+            document.getElementById('user-active').checked = user?.is_active ?? true;
+            document.getElementById('user-admin').checked = user?.is_admin ?? false;
+            document.getElementById('user-modal').classList.add('active');
+        }
+
+        async function editUser(id) {
+            try {
+                const data = await api(`/admin/users/${id}`);
+                showUserModal(data.user);
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('Delete this user?')) return;
+            try {
+                await api(`/admin/users/${id}`, 'DELETE');
+                showAlert('User deleted');
+                await loadUsers();
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        document.getElementById('user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('user-id').value;
+            const body = {
+                username: document.getElementById('user-username').value,
+                email: document.getElementById('user-email').value,
+                is_active: document.getElementById('user-active').checked,
+                is_admin: document.getElementById('user-admin').checked
+            };
+            const pwd = document.getElementById('user-password').value;
+            if (pwd) body.password = pwd;
+
+            try {
+                if (id) {
+                    await api(`/admin/users/${id}`, 'PUT', body);
+                } else {
+                    await api('/admin/users', 'POST', body);
+                }
+                closeModal('user-modal');
+                showAlert(id ? 'User updated' : 'User created');
+                await loadUsers();
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        });
+
+        // Routes
+        async function loadRoutes() {
+            try {
+                const data = await api('/admin/routes');
+                const tbody = document.getElementById('routes-table');
+                tbody.innerHTML = (data.routes || []).map(r => `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td><code>${r.cidr}</code></td>
+                        <td>${r.comment || '-'}</td>
+                        <td><span class="badge ${r.enabled ? 'badge-success' : 'badge-danger'}">${r.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                        <td class="btn-group">
+                            <button class="btn btn-sm btn-primary" onclick="editRoute(${r.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteRoute(${r.id})">Delete</button>
+                        </td>
+                    </tr>
+                `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No routes configured</td></tr>';
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        function showRouteModal(route = null) {
+            document.getElementById('route-modal-title').textContent = route ? 'Edit Route' : 'Add Route';
+            document.getElementById('route-id').value = route?.id || '';
+            document.getElementById('route-cidr').value = route?.cidr || '';
+            document.getElementById('route-comment').value = route?.comment || '';
+            document.getElementById('route-enabled').checked = route?.enabled ?? true;
+            document.getElementById('route-modal').classList.add('active');
+        }
+
+        async function editRoute(id) {
+            try {
+                const data = await api('/admin/routes');
+                const route = data.routes.find(r => r.id === id);
+                showRouteModal(route);
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        async function deleteRoute(id) {
+            if (!confirm('Delete this route?')) return;
+            try {
+                await api(`/admin/routes/${id}`, 'DELETE');
+                showAlert('Route deleted');
+                await loadRoutes();
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        document.getElementById('route-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('route-id').value;
+            const body = {
+                cidr: document.getElementById('route-cidr').value,
+                comment: document.getElementById('route-comment').value,
+                enabled: document.getElementById('route-enabled').checked
+            };
+            try {
+                if (id) {
+                    await api(`/admin/routes/${id}`, 'PUT', body);
+                } else {
+                    await api('/admin/routes', 'POST', body);
+                }
+                closeModal('route-modal');
+                showAlert(id ? 'Route updated' : 'Route created');
+                await loadRoutes();
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        });
+
+        // NAT Rules
+        async function loadNAT() {
+            try {
+                const data = await api('/admin/nat');
+                const tbody = document.getElementById('nat-table');
+                tbody.innerHTML = (data.nat_rules || []).map(r => {
+                    let details = '';
+                    if (r.type === 'masquerade') details = '-';
+                    else if (r.type === 'snat') details = `${r.source} -> ${r.to_source}`;
+                    else if (r.type === 'dnat') details = `${r.protocol}:${r.port} -> ${r.to_destination}`;
+                    return `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td><span class="badge badge-info">${r.type.toUpperCase()}</span></td>
+                        <td>${r.interface}</td>
+                        <td><code>${details}</code></td>
+                        <td><span class="badge ${r.enabled ? 'badge-success' : 'badge-danger'}">${r.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                        <td class="btn-group">
+                            <button class="btn btn-sm btn-primary" onclick="editNAT(${r.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteNAT(${r.id})">Delete</button>
+                        </td>
+                    </tr>
+                `}).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No NAT rules configured</td></tr>';
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        function updateNATFields() {
+            const type = document.getElementById('nat-type').value;
+            document.getElementById('snat-fields').classList.toggle('hidden', type !== 'snat');
+            document.getElementById('dnat-fields').classList.toggle('hidden', type !== 'dnat');
+        }
+
+        function showNATModal(rule = null) {
+            document.getElementById('nat-modal-title').textContent = rule ? 'Edit NAT Rule' : 'Add NAT Rule';
+            document.getElementById('nat-id').value = rule?.id || '';
+            document.getElementById('nat-type').value = rule?.type || 'masquerade';
+            document.getElementById('nat-interface').value = rule?.interface || '';
+            document.getElementById('nat-comment').value = rule?.comment || '';
+            document.getElementById('nat-source').value = rule?.source || '';
+            document.getElementById('nat-destination').value = rule?.destination || '';
+            document.getElementById('nat-to-source').value = rule?.to_source || '';
+            document.getElementById('nat-protocol').value = rule?.protocol || 'tcp';
+            document.getElementById('nat-port').value = rule?.port || '';
+            document.getElementById('nat-to-dest').value = rule?.to_destination || '';
+            document.getElementById('nat-enabled').checked = rule?.enabled ?? true;
+            updateNATFields();
+            document.getElementById('nat-modal').classList.add('active');
+        }
+
+        async function editNAT(id) {
+            try {
+                const data = await api('/admin/nat');
+                const rule = data.nat_rules.find(r => r.id === id);
+                showNATModal(rule);
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        async function deleteNAT(id) {
+            if (!confirm('Delete this NAT rule?')) return;
+            try {
+                await api(`/admin/nat/${id}`, 'DELETE');
+                showAlert('NAT rule deleted');
+                await loadNAT();
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        async function applyNAT() {
+            try {
+                const data = await api('/admin/nat/apply', 'POST');
+                showAlert(`NAT rules applied: ${data.masquerade} masquerade, ${data.snat} SNAT, ${data.dnat} DNAT`);
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        document.getElementById('nat-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('nat-id').value;
+            const type = document.getElementById('nat-type').value;
+            const body = {
+                type,
+                interface: document.getElementById('nat-interface').value,
+                comment: document.getElementById('nat-comment').value,
+                enabled: document.getElementById('nat-enabled').checked
+            };
+            if (type === 'snat') {
+                body.source = document.getElementById('nat-source').value;
+                body.destination = document.getElementById('nat-destination').value;
+                body.to_source = document.getElementById('nat-to-source').value;
+            }
+            if (type === 'dnat') {
+                body.protocol = document.getElementById('nat-protocol').value;
+                body.port = parseInt(document.getElementById('nat-port').value);
+                body.to_destination = document.getElementById('nat-to-dest').value;
+            }
+            try {
+                if (id) {
+                    await api(`/admin/nat/${id}`, 'PUT', body);
+                } else {
+                    await api('/admin/nat', 'POST', body);
+                }
+                closeModal('nat-modal');
+                showAlert(id ? 'NAT rule updated' : 'NAT rule created');
+                await loadNAT();
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        });
+
+        // Init
+        if (token) {
+            api('/admin/users').then(() => {
+                showMainApp();
+            }).catch(() => {
+                logout();
+            });
+        }
+    </script>
+</body>
+</html>
