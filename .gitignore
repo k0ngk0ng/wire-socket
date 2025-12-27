@@ -117,6 +117,9 @@ temp/
 *.plist
 *.xml
 
+# Except deploy templates
+!server/deploy/systemd/*.service
+
 # Certificates and keys (security)
 *.pem
 *.key
