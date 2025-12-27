@@ -15,6 +15,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Version is set at build time via -ldflags
+var Version = "dev"
+
 // Config represents the server configuration
 type Config struct {
 	Server struct {
@@ -54,7 +57,15 @@ type Config struct {
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	initDB := flag.Bool("init-db", false, "Initialize database with default data")
+	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("wire-socket-server version %s\n", Version)
+		return
+	}
+
+	log.Printf("WireSocket Server %s", Version)
 
 	// Load configuration
 	config, err := loadConfig(*configPath)
