@@ -58,12 +58,16 @@ type Session struct {
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// Route represents a route to push to VPN clients
+// Route represents a route for VPN
+// Routes are both pushed to clients AND applied on server side
 type Route struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	CIDR      string    `gorm:"not null;unique" json:"cidr"` // e.g., "192.168.1.0/24"
+	Gateway   string    `json:"gateway,omitempty"`           // Next hop (optional, for server-side routing)
+	Device    string    `json:"device,omitempty"`            // Interface (optional, defaults to wg device)
 	Comment   string    `json:"comment"`
 	Enabled   bool      `gorm:"default:true" json:"enabled"`
+	PushToClient bool   `gorm:"default:true" json:"push_to_client"` // Push this route to VPN clients
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
