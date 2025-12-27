@@ -182,13 +182,18 @@ build_server() {
     echo "Compiling server..."
     go build -o dist/wire-socket-server cmd/server/main.go
 
+    echo "Compiling wsctl..."
+    go build -o dist/wsctl cmd/wsctl/main.go
+
     print_success "Server built: ./server/dist/wire-socket-server"
+    print_success "wsctl built: ./server/dist/wsctl"
 
     # Show binary info
     if command -v file &> /dev/null; then
         file dist/wire-socket-server
+        file dist/wsctl
     fi
-    ls -lh dist/wire-socket-server
+    ls -lh dist/wire-socket-server dist/wsctl
 }
 
 # Build client (frontend + bundled backend)
