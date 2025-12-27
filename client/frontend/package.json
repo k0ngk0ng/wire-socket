@@ -2,6 +2,10 @@
   "name": "wire-socket",
   "version": "1.0.0",
   "description": "Cross-platform VPN client with WireGuard over WebSocket tunneling",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/k0ngk0ng/wire-socket.git"
+  },
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
@@ -9,7 +13,10 @@
     "build": "npm run prepare && electron-builder --mac --win --linux",
     "build:mac": "npm run prepare && electron-builder --mac",
     "build:win": "npm run prepare && electron-builder --win",
-    "build:linux": "npm run prepare && electron-builder --linux"
+    "build:linux": "npm run prepare && electron-builder --linux",
+    "build:ci:mac": "electron-builder --mac --publish never",
+    "build:ci:win": "electron-builder --win --publish never",
+    "build:ci:linux": "electron-builder --linux --publish never"
   },
   "keywords": [
     "vpn",
