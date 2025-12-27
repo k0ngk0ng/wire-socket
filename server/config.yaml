@@ -74,3 +74,30 @@ tunnel:
   # TLS configuration for WSS (optional, for WS only leave empty)
   # tls_cert: "/etc/letsencrypt/live/vpn.example.com/fullchain.pem"
   # tls_key: "/etc/letsencrypt/live/vpn.example.com/privkey.pem"
+
+# NAT/Forwarding configuration
+# Allows VPN clients to access other networks through the server
+nat:
+  # Enable IP forwarding (sysctl net.ipv4.ip_forward=1)
+  enabled: true
+
+  # Masquerade rules - allow VPN clients to access external networks
+  # Format: outbound interface for MASQUERADE
+  masquerade:
+    - interface: "eth0"    # Allow VPN clients to access internet/LAN via eth0
+    # - interface: "wg0"   # Allow VPN clients to access another WireGuard network
+
+  # SNAT rules - for more specific source NAT control
+  # Used when you need to specify the source IP for outbound traffic
+  snat: []
+    # - source: "10.250.2.0/24"       # VPN client subnet
+    #   destination: "192.168.250.0/24"  # Target network
+    #   interface: "wg0"              # Outbound interface
+    #   to_source: "192.168.250.8"    # SNAT to this IP
+
+  # DNAT rules - port forwarding from external to VPN clients (optional)
+  dnat: []
+    # - interface: "eth0"             # Incoming interface
+    #   protocol: "tcp"               # tcp or udp
+    #   port: 8080                    # External port
+    #   to_destination: "10.250.2.5:80"  # Forward to VPN client

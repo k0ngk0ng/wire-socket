@@ -6,9 +6,12 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"wire-socket-server/internal/api"
 	"wire-socket-server/internal/auth"
 	"wire-socket-server/internal/database"
+	"wire-socket-server/internal/nat"
 	"wire-socket-server/internal/tunnel"
 	"wire-socket-server/internal/wireguard"
 
@@ -57,6 +60,24 @@ type Config struct {
 		TLSCert    string `yaml:"tls_cert"`
 		TLSKey     string `yaml:"tls_key"`
 	} `yaml:"tunnel"`
+	NAT struct {
+		Enabled    bool `yaml:"enabled"`
+		Masquerade []struct {
+			Interface string `yaml:"interface"`
+		} `yaml:"masquerade"`
+		SNAT []struct {
+			Source      string `yaml:"source"`
+			Destination string `yaml:"destination"`
+			Interface   string `yaml:"interface"`
+			ToSource    string `yaml:"to_source"`
+		} `yaml:"snat"`
+		DNAT []struct {
+			Interface     string `yaml:"interface"`
+			Protocol      string `yaml:"protocol"`
+			Port          int    `yaml:"port"`
+			ToDestination string `yaml:"to_destination"`
+		} `yaml:"dnat"`
+	} `yaml:"nat"`
 }
 
 func main() {
@@ -252,6 +273,52 @@ func main() {
 		log.Println("Built-in tunnel disabled. Make sure wstunnel server is running:")
 		log.Println("  wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820")
 	}
+
+	// Initialize NAT manager
+	natConfig := nat.Config{
+		Enabled: config.NAT.Enabled,
+	}
+	for _, m := range config.NAT.Masquerade {
+		natConfig.Masquerade = append(natConfig.Masquerade, nat.MasqueradeRule{
+			Interface: m.Interface,
+		})
+	}
+	for _, s := range config.NAT.SNAT {
+		natConfig.SNAT = append(natConfig.SNAT, nat.SNATRule{
+			Source:      s.Source,
+			Destination: s.Destination,
+			Interface:   s.Interface,
+			ToSource:    s.ToSource,
+		})
+	}
+	for _, d := range config.NAT.DNAT {
+		natConfig.DNAT = append(natConfig.DNAT, nat.DNATRule{
+			Interface:     d.Interface,
+			Protocol:      d.Protocol,
+			Port:          d.Port,
+			ToDestination: d.ToDestination,
+		})
+	}
+
+	natManager := nat.NewManager(natConfig)
+	if err := natManager.Apply(); err != nil {
+		log.Printf("Warning: failed to apply NAT rules: %v", err)
+	}
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		log.Println("\nShutting down...")
+		natManager.Cleanup()
+		if tunnelServer != nil {
+			tunnelServer.Stop()
+		}
+		wgManager.Close()
+		os.Exit(0)
+	}()
 
 	log.Println("")
 	log.Println("Server is ready!")
