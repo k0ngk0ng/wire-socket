@@ -66,6 +66,7 @@ config.local.yaml
 .env
 .env.local
 .env.*.local
+client/frontend/build.config.json
 
 # OS files
 .DS_Store
