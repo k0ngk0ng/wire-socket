@@ -77,7 +77,7 @@ The system requires 3 components running simultaneously:
 
 The server is organized into internal packages:
 
-- **`internal/database/`**: GORM models (User, Server, AllocatedIP, Session)
+- **`internal/database/`**: GORM models (User, Server, AllocatedIP, Session, Route, NATRule)
   - Uses SQLite by default (`vpn.db`)
   - Can switch to PostgreSQL via config
   - Auto-migrates schema on startup
@@ -85,6 +85,7 @@ The server is organized into internal packages:
 - **`internal/auth/`**: JWT authentication handlers
   - Issues JWT tokens on login
   - Validates tokens via middleware
+  - Admin middleware for privileged endpoints
   - Session tracking for revocation
 
 - **`internal/wireguard/`**: WireGuard management
@@ -100,10 +101,19 @@ The server is organized into internal packages:
   - `platform_*.go`: Platform-specific helpers (Linux, macOS, Windows)
 
 - **`internal/api/`**: HTTP API routes (Gin framework)
-  - POST `/api/auth/register` - User registration
+  - POST `/api/auth/register` - User registration (disabled by default, enable in config)
   - POST `/api/auth/login` - Authentication + config generation
   - GET `/api/config` - WireGuard config (authenticated)
   - GET `/api/status` - Connection status
+
+  **Admin API** (requires admin user):
+  - GET/POST `/api/admin/users` - List/create users
+  - GET/PUT/DELETE `/api/admin/users/:id` - User management
+  - GET/POST `/api/admin/routes` - List/create routes
+  - PUT/DELETE `/api/admin/routes/:id` - Route management
+  - GET/POST `/api/admin/nat` - List/create NAT rules
+  - PUT/DELETE `/api/admin/nat/:id` - NAT rule management
+  - POST `/api/admin/nat/apply` - Apply NAT rules without restart
 
 **Important**: Server must run with sudo/root privileges. Supports both kernel and userspace WireGuard modes.
 
@@ -233,10 +243,12 @@ sudo ./vpn-client -service uninstall
 ## Database Schema
 
 Tables auto-created on first run:
-- `users`: User accounts (username, email, password_hash)
+- `users`: User accounts (username, email, password_hash, is_active, is_admin)
 - `servers`: VPN server configs
 - `allocated_ips`: IP allocations to users (with public keys)
 - `sessions`: JWT session tracking
+- `routes`: Routes to push to VPN clients (CIDR, comment, enabled)
+- `nat_rules`: NAT/iptables rules (type: masquerade/snat/dnat, interface, etc.)
 
 Query database (SQLite):
 ```bash

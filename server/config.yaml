@@ -37,6 +37,8 @@ wireguard:
   endpoint: "vpn.example.com:51820"
 
   # Routes to push to clients (CIDR format)
+  # NOTE: Routes can be managed via API (/api/admin/routes) and stored in database.
+  # Routes in this config are DEPRECATED - use the API instead.
   # These are ADDITIONAL routes beyond the VPN subnet
   # The VPN subnet is automatically included
   # Examples:
@@ -54,6 +56,10 @@ wireguard:
 auth:
   # JWT secret for token signing (change this in production!)
   jwt_secret: "change-this-secret-in-production"
+
+  # Allow public user registration (default: false)
+  # When false, only admin users can create new accounts via /api/admin/users
+  allow_registration: false
 
 tunnel:
   # Enable built-in WebSocket tunnel (replaces wstunnel)
@@ -76,7 +82,9 @@ tunnel:
   # tls_key: "/etc/letsencrypt/live/vpn.example.com/privkey.pem"
 
 # NAT/Forwarding configuration
-# Allows VPN clients to access other networks through the server
+# NOTE: NAT rules can be managed via API (/api/admin/nat) and stored in database.
+# Rules in this config are used as fallback if database is empty.
+# Use POST /api/admin/nat/apply to apply changes without restart.
 nat:
   # Enable IP forwarding (sysctl net.ipv4.ip_forward=1)
   enabled: true

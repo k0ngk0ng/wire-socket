@@ -17,6 +17,7 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	IsActive     bool      `gorm:"default:true" json:"is_active"`
+	IsAdmin      bool      `gorm:"default:false" json:"is_admin"`
 }
 
 // Server represents a VPN server configuration
@@ -57,6 +58,48 @@ type Session struct {
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
+// Route represents a route to push to VPN clients
+type Route struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CIDR      string    `gorm:"not null;unique" json:"cidr"` // e.g., "192.168.1.0/24"
+	Comment   string    `json:"comment"`
+	Enabled   bool      `gorm:"default:true" json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NATRuleType defines the type of NAT rule
+type NATRuleType string
+
+const (
+	NATTypeMasquerade NATRuleType = "masquerade"
+	NATTypeSNAT       NATRuleType = "snat"
+	NATTypeDNAT       NATRuleType = "dnat"
+)
+
+// NATRule represents a NAT/iptables rule
+type NATRule struct {
+	ID        uint        `gorm:"primaryKey" json:"id"`
+	Type      NATRuleType `gorm:"not null" json:"type"` // masquerade, snat, dnat
+	Comment   string      `json:"comment"`
+	Enabled   bool        `gorm:"default:true" json:"enabled"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+
+	// For MASQUERADE
+	Interface string `json:"interface,omitempty"` // Outbound interface (e.g., "eth0")
+
+	// For SNAT
+	Source      string `json:"source,omitempty"`      // Source CIDR
+	Destination string `json:"destination,omitempty"` // Destination CIDR
+	ToSource    string `json:"to_source,omitempty"`   // SNAT to this IP
+
+	// For DNAT
+	Protocol      string `json:"protocol,omitempty"`       // tcp or udp
+	Port          int    `json:"port,omitempty"`           // External port
+	ToDestination string `json:"to_destination,omitempty"` // Forward to address:port
+}
+
 // DB holds the database connection
 type DB struct {
 	*gorm.DB
@@ -70,7 +113,7 @@ func NewDB(dbPath string) (*DB, error) {
 	}
 
 	// Auto-migrate schemas
-	if err := db.AutoMigrate(&User{}, &Server{}, &AllocatedIP{}, &Session{}); err != nil {
+	if err := db.AutoMigrate(&User{}, &Server{}, &AllocatedIP{}, &Session{}, &Route{}, &NATRule{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 

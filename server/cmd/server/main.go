@@ -50,7 +50,8 @@ type Config struct {
 		Routes     []string `yaml:"routes"` // Routes to push to clients
 	} `yaml:"wireguard"`
 	Auth struct {
-		JWTSecret string `yaml:"jwt_secret"`
+		JWTSecret           string `yaml:"jwt_secret"`
+		AllowRegistration   bool   `yaml:"allow_registration"` // Default: false (disabled)
 	} `yaml:"auth"`
 	Tunnel struct {
 		Enabled    bool   `yaml:"enabled"`
@@ -208,7 +209,7 @@ func main() {
 	configGen := wireguard.NewConfigGenerator(db, wgManager)
 
 	// Initialize auth handler
-	authHandler := auth.NewHandler(db, config.Auth.JWTSecret)
+	authHandler := auth.NewHandler(db, config.Auth.JWTSecret, config.Auth.AllowRegistration)
 
 	// Set up Gin router
 	gin.SetMode(gin.ReleaseMode)
@@ -238,7 +239,18 @@ func main() {
 		}
 		tunnelURL = "wss://" + config.Tunnel.PublicHost + path
 	}
-	apiRouter := api.NewRouter(authHandler, db, configGen, tunnelURL, config.WireGuard.Routes, config.WireGuard.Subnet)
+
+	// Initialize NAT manager - load from database first, fallback to config
+	natConfig := loadNATConfig(db, config)
+	natManager := nat.NewManager(natConfig)
+	if err := natManager.Apply(); err != nil {
+		log.Printf("Warning: failed to apply NAT rules: %v", err)
+	}
+
+	// Initialize admin handler
+	adminHandler := api.NewAdminHandler(db, natManager)
+
+	apiRouter := api.NewRouter(authHandler, adminHandler, db, configGen, tunnelURL, config.WireGuard.Subnet)
 	apiRouter.SetupRoutes(engine)
 
 	// Start server
@@ -272,37 +284,6 @@ func main() {
 		log.Println("")
 		log.Println("Built-in tunnel disabled. Make sure wstunnel server is running:")
 		log.Println("  wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820")
-	}
-
-	// Initialize NAT manager
-	natConfig := nat.Config{
-		Enabled: config.NAT.Enabled,
-	}
-	for _, m := range config.NAT.Masquerade {
-		natConfig.Masquerade = append(natConfig.Masquerade, nat.MasqueradeRule{
-			Interface: m.Interface,
-		})
-	}
-	for _, s := range config.NAT.SNAT {
-		natConfig.SNAT = append(natConfig.SNAT, nat.SNATRule{
-			Source:      s.Source,
-			Destination: s.Destination,
-			Interface:   s.Interface,
-			ToSource:    s.ToSource,
-		})
-	}
-	for _, d := range config.NAT.DNAT {
-		natConfig.DNAT = append(natConfig.DNAT, nat.DNATRule{
-			Interface:     d.Interface,
-			Protocol:      d.Protocol,
-			Port:          d.Port,
-			ToDestination: d.ToDestination,
-		})
-	}
-
-	natManager := nat.NewManager(natConfig)
-	if err := natManager.Apply(); err != nil {
-		log.Printf("Warning: failed to apply NAT rules: %v", err)
 	}
 
 	// Set up signal handling for graceful shutdown
@@ -375,6 +356,7 @@ func initializeDatabase(db *database.DB, config *Config, publicKey string) error
 		Email:        "admin@example.com",
 		PasswordHash: string(hashedPassword),
 		IsActive:     true,
+		IsAdmin:      true,
 	}
 
 	if err := db.Create(adminUser).Error; err != nil {
@@ -444,4 +426,66 @@ func getServerAddress(subnet string) (string, error) {
 	ones, _ := ipNet.Mask.Size()
 
 	return fmt.Sprintf("%s/%d", ip4.String(), ones), nil
+}
+
+// loadNATConfig loads NAT configuration from database, falling back to config.yaml if database is empty
+func loadNATConfig(db *database.DB, config *Config) nat.Config {
+	natConfig := nat.Config{
+		Enabled: config.NAT.Enabled,
+	}
+
+	// Try to load from database first
+	var rules []database.NATRule
+	if err := db.Where("enabled = ?", true).Find(&rules).Error; err == nil && len(rules) > 0 {
+		log.Printf("Loading NAT rules from database (%d rules)", len(rules))
+		for _, rule := range rules {
+			switch rule.Type {
+			case database.NATTypeMasquerade:
+				natConfig.Masquerade = append(natConfig.Masquerade, nat.MasqueradeRule{
+					Interface: rule.Interface,
+				})
+			case database.NATTypeSNAT:
+				natConfig.SNAT = append(natConfig.SNAT, nat.SNATRule{
+					Source:      rule.Source,
+					Destination: rule.Destination,
+					Interface:   rule.Interface,
+					ToSource:    rule.ToSource,
+				})
+			case database.NATTypeDNAT:
+				natConfig.DNAT = append(natConfig.DNAT, nat.DNATRule{
+					Interface:     rule.Interface,
+					Protocol:      rule.Protocol,
+					Port:          rule.Port,
+					ToDestination: rule.ToDestination,
+				})
+			}
+		}
+		return natConfig
+	}
+
+	// Fall back to config.yaml
+	log.Println("Loading NAT rules from config.yaml (no rules in database)")
+	for _, m := range config.NAT.Masquerade {
+		natConfig.Masquerade = append(natConfig.Masquerade, nat.MasqueradeRule{
+			Interface: m.Interface,
+		})
+	}
+	for _, s := range config.NAT.SNAT {
+		natConfig.SNAT = append(natConfig.SNAT, nat.SNATRule{
+			Source:      s.Source,
+			Destination: s.Destination,
+			Interface:   s.Interface,
+			ToSource:    s.ToSource,
+		})
+	}
+	for _, d := range config.NAT.DNAT {
+		natConfig.DNAT = append(natConfig.DNAT, nat.DNATRule{
+			Interface:     d.Interface,
+			Protocol:      d.Protocol,
+			Port:          d.Port,
+			ToDestination: d.ToDestination,
+		})
+	}
+
+	return natConfig
 }
