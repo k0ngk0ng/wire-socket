@@ -53,6 +53,11 @@ tunnel:
   # Tunnel listen address (WebSocket)
   listen_addr: "0.0.0.0:443"
 
+  # Path prefix for WebSocket upgrade (useful for nginx reverse proxy)
+  # Similar to wstunnel's --restrict-http-upgrade-path-prefix
+  # Examples: "/", "/tunnel", "/wg", "/secret-path"
+  path: "/"
+
   # TLS configuration for WSS (optional, for WS only leave empty)
   # tls_cert: "/etc/letsencrypt/live/vpn.example.com/fullchain.pem"
   # tls_key: "/etc/letsencrypt/live/vpn.example.com/privkey.pem"
