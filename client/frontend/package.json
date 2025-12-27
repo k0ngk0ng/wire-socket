@@ -47,14 +47,22 @@
     "files": [
       "src/**/*",
       "public/**/*",
+      "assets/**/*",
       "!resources/bin/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": ["*.png"]
+      }
     ],
     "mac": {
       "target": [
         "dmg",
         "zip"
       ],
-      "icon": "public/icon.icns",
+      "icon": "assets/icon-1024.png",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -72,7 +80,7 @@
         "nsis",
         "portable"
       ],
-      "icon": "public/icon.ico",
+      "icon": "assets/icon-1024.png",
       "requestedExecutionLevel": "requireAdministrator",
       "extraResources": [
         {
@@ -96,7 +104,7 @@
         "deb",
         "rpm"
       ],
-      "icon": "public/icon.png",
+      "icon": "assets/icon-1024.png",
       "category": "Network",
       "maintainer": "WireSocket Team",
       "synopsis": "Cross-platform VPN client with WireGuard",

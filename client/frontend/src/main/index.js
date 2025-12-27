@@ -201,17 +201,34 @@ async function initializeService() {
   }
 }
 
+function getAppIconPath() {
+  const isPackaged = app.isPackaged;
+  if (isPackaged) {
+    return path.join(process.resourcesPath, 'assets', 'icon-1024.png');
+  } else {
+    return path.join(__dirname, '../../assets/icon-1024.png');
+  }
+}
+
 function createWindow() {
+  const iconPath = getAppIconPath();
+
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     show: false, // Don't show until ready
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+
+  // Set dock icon on macOS
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(iconPath);
+  }
 
   mainWindow.loadFile(path.join(__dirname, '../../public/index.html'));
 
@@ -250,32 +267,31 @@ function createWindow() {
 }
 
 function createTray() {
-  // Create a simple tray icon using nativeImage
-  // Use a template image for macOS (automatically adapts to light/dark menu bar)
-  let icon;
+  // Load tray icon from assets
+  let iconPath;
+  const isPackaged = app.isPackaged;
 
   if (process.platform === 'darwin') {
-    // macOS: Use 16x16 template image (will auto-adjust for retina)
-    icon = nativeImage.createFromBuffer(
-      Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA' +
-        'YKLEQUNDREFUCB1jYGBg+M+ABVy4cOE/AwMDKwMWwMjIyMCIzRQGBgYGZgZsgJmZGacGZmZmBhY' +
-        'mJiasSllZWXH6hJWVFacLWFlZGZgBs1xxOQAAD+4RQa+gvIAAAAAASUVORK5CYII=',
-        'base64'
-      )
-    );
-    icon.setTemplateImage(true);
+    // macOS: Use template image for menu bar
+    if (isPackaged) {
+      iconPath = path.join(process.resourcesPath, 'assets', 'tray-icon-mac.png');
+    } else {
+      iconPath = path.join(__dirname, '../../assets/tray-icon-mac.png');
+    }
   } else {
-    // Windows/Linux: Use 16x16 color icon
-    icon = nativeImage.createFromBuffer(
-      Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA' +
-        'gklEQVQ4y2NgGAWjIQACFixY8J+BgYEVm6KLFy/+Z2RkZMSmhpmZmQGbGmZmZgYWJiYmrIpZWVl' +
-        'x+oSVlRWnC1hZWRmYGRgYWHEpAgBWXIoANLDiUgSggRWXIgANrLgUAWhgxaUIQAMrLkUAGlhxKQ' +
-        'LQwIpLEYAGVlyKADSw4lIEAACOLhhB1uxp1QAAAABJRU5ErkJggg==',
-        'base64'
-      )
-    );
+    // Windows/Linux: Use color icon
+    if (isPackaged) {
+      iconPath = path.join(process.resourcesPath, 'assets', 'tray-icon.png');
+    } else {
+      iconPath = path.join(__dirname, '../../assets/tray-icon.png');
+    }
+  }
+
+  let icon = nativeImage.createFromPath(iconPath);
+
+  // macOS: Set as template image so it adapts to light/dark menu bar
+  if (process.platform === 'darwin') {
+    icon.setTemplateImage(true);
   }
 
   tray = new Tray(icon);
