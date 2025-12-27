@@ -11,23 +11,30 @@ echo ""
 
 # Step 1: Download binaries
 echo "=========================================="
-echo "Step 1/3: Downloading third-party binaries"
+echo "Step 1/4: Downloading third-party binaries"
 echo "=========================================="
 "$SCRIPT_DIR/download-binaries.sh"
 echo ""
 
 # Step 2: Download/build WireGuard components
 echo "=========================================="
-echo "Step 2/3: Setting up WireGuard components"
+echo "Step 2/4: Setting up WireGuard components"
 echo "=========================================="
 "$SCRIPT_DIR/download-wireguard.sh"
 echo ""
 
 # Step 3: Build backend
 echo "=========================================="
-echo "Step 3/3: Building client backend"
+echo "Step 3/4: Building client backend"
 echo "=========================================="
 "$SCRIPT_DIR/build-backend.sh"
+echo ""
+
+# Step 4: Apply build configuration
+echo "=========================================="
+echo "Step 4/4: Applying build configuration"
+echo "=========================================="
+"$SCRIPT_DIR/apply-config.sh"
 echo ""
 
 echo "✅ All preparation completed!"
