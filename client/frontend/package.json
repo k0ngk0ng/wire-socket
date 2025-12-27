@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "prepare": "./scripts/prepare-package.sh",
-    "build": "npm run prepare && electron-builder",
+    "build": "npm run prepare && electron-builder --mac --win --linux",
     "build:mac": "npm run prepare && electron-builder --mac",
     "build:win": "npm run prepare && electron-builder --win",
     "build:linux": "npm run prepare && electron-builder --linux"
