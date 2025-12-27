@@ -4,6 +4,7 @@ package wireguard
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os/exec"
 	"strings"
@@ -17,6 +18,8 @@ func setTunAddress(name, address string) error {
 		return fmt.Errorf("invalid address %s: %w", address, err)
 	}
 
+	log.Printf("Setting TUN address: interface=%s, address=%s", name, address)
+
 	// Set the address using ip command
 	cmd := exec.Command("ip", "addr", "add", address, "dev", name)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -24,6 +27,9 @@ func setTunAddress(name, address string) error {
 		if !strings.Contains(string(output), "File exists") {
 			return fmt.Errorf("failed to add address: %s: %w", string(output), err)
 		}
+		log.Printf("Address already exists on %s", name)
+	} else {
+		log.Printf("Address %s added to %s", address, name)
 	}
 
 	// Bring interface up
@@ -31,9 +37,22 @@ func setTunAddress(name, address string) error {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to bring interface up: %s: %w", string(output), err)
 	}
+	log.Printf("Interface %s is up", name)
 
-	_ = ip
-	_ = ipNet
+	// Verify the route was added (Linux should add it automatically when setting address)
+	// If not, add it manually
+	ones, _ := ipNet.Mask.Size()
+	networkAddr := ip.Mask(ipNet.Mask)
+	routeCIDR := fmt.Sprintf("%s/%d", networkAddr.String(), ones)
+
+	cmd = exec.Command("ip", "route", "add", routeCIDR, "dev", name)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		if !strings.Contains(string(output), "File exists") {
+			log.Printf("Note: route add returned: %s", strings.TrimSpace(string(output)))
+		}
+	} else {
+		log.Printf("Route %s added to %s", routeCIDR, name)
+	}
 
 	return nil
 }

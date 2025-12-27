@@ -135,20 +135,21 @@ func main() {
 		}
 	}
 
-	// Configure WireGuard device
-	if err := wgManager.ConfigureDevice(privateKey, config.WireGuard.ListenPort); err != nil {
-		log.Fatalf("Failed to configure WireGuard device: %v", err)
-	}
-
-	log.Printf("WireGuard device %s configured successfully", config.WireGuard.DeviceName)
-
-	// Set server address (first usable IP in subnet, e.g., 10.250.2.0/24 -> 10.250.2.1/24)
+	// Calculate server address BEFORE configuring device
+	// (first usable IP in subnet, e.g., 10.250.2.0/24 -> 10.250.2.1/24)
 	serverAddr, err := getServerAddress(config.WireGuard.Subnet)
 	if err != nil {
 		log.Fatalf("Failed to calculate server address: %v", err)
 	}
 	wgManager.SetAddress(serverAddr)
 	log.Printf("WireGuard server address: %s", serverAddr)
+
+	// Configure WireGuard device (must be after SetAddress so TUN gets the IP)
+	if err := wgManager.ConfigureDevice(privateKey, config.WireGuard.ListenPort); err != nil {
+		log.Fatalf("Failed to configure WireGuard device: %v", err)
+	}
+
+	log.Printf("WireGuard device %s configured successfully", config.WireGuard.DeviceName)
 
 	// Load existing peers from config file (if any)
 	if err := wgManager.LoadPeersFromConfig(); err != nil {
