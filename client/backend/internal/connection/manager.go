@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -430,9 +431,24 @@ func normalizeServerURL(addr string) string {
 
 // getConfigDir returns the configuration directory path
 func getConfigDir() (string, error) {
+	// When running as a system service (root), use a system-level directory
+	// On macOS/Linux, running as root means os.Geteuid() == 0
+	if os.Geteuid() == 0 {
+		switch runtime.GOOS {
+		case "darwin":
+			return "/var/lib/wiresocket", nil
+		case "linux":
+			return "/var/lib/wiresocket", nil
+		case "windows":
+			return filepath.Join(os.Getenv("ProgramData"), "WireSocket"), nil
+		}
+	}
+
+	// For regular user, use home directory
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		// Fallback to system directory
+		return "/var/lib/wiresocket", nil
 	}
 
 	return filepath.Join(home, ".wire-socket"), nil

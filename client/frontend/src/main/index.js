@@ -136,17 +136,18 @@ function installAndStartService() {
 
       if (!isInstalled) {
         // Need to install and load
-        command = `"${backendPath}" -service install && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
+        // Create config directory first
+        command = `mkdir -p /var/lib/wiresocket && "${backendPath}" -service install && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
       } else if (!isLoaded) {
         // Already installed, just need to load
-        command = `launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
+        command = `mkdir -p /var/lib/wiresocket && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
       } else {
         // Already loaded, try to kickstart
-        command = `launchctl kickstart -k system/WireSocketClient 2>/dev/null || launchctl stop WireSocketClient && launchctl start WireSocketClient`;
+        command = `mkdir -p /var/lib/wiresocket && launchctl kickstart -k system/WireSocketClient 2>/dev/null || (launchctl stop WireSocketClient; launchctl start WireSocketClient)`;
       }
     } else if (platform === 'linux') {
       // Linux: Install service and start it
-      command = `"${backendPath}" -service install && systemctl start WireSocketClient`;
+      command = `mkdir -p /var/lib/wiresocket && "${backendPath}" -service install && systemctl start WireSocketClient`;
     } else if (platform === 'win32') {
       // Windows: Install service and start it
       command = `"${backendPath}" -service install && net start WireSocketClient`;

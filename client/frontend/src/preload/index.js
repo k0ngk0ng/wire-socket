@@ -7,5 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStatus: () => ipcRenderer.invoke('api:getStatus'),
   getServers: () => ipcRenderer.invoke('api:getServers'),
   addServer: (server) => ipcRenderer.invoke('api:addServer', server),
+  checkService: () => ipcRenderer.invoke('api:checkService'),
   updateTrayStatus: (isConnected) => ipcRenderer.invoke('tray:updateStatus', isConnected),
+  onServiceStatus: (callback) => ipcRenderer.on('service:status', (event, status) => callback(status)),
 });
