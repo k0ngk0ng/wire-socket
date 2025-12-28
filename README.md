@@ -10,6 +10,8 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 - **All-in-One**: Client bundles all dependencies
 - **Modern UI**: Electron desktop app with system tray
 - **Auto Service Install**: Automatically installs and starts backend service with privilege escalation
+- **Admin Tools**: Web UI and `wsctl` CLI for managing users, routes, and NAT rules
+- **MTU Handling**: TCPMSS clamping support for multi-link tunnels
 
 ## Quick Start
 
@@ -34,6 +36,22 @@ The server includes a built-in WebSocket tunnel (port 443) and userspace WireGua
 **WireGuard Mode** (in `config.yaml`):
 - `mode: "userspace"` - Pure Go implementation (default, no WireGuard installation required)
 - `mode: "kernel"` - Uses kernel WireGuard (requires wireguard-tools)
+
+**Server Management** with `wsctl`:
+```bash
+# User management
+wsctl user list
+wsctl user create alice alice@example.com secret123 --admin
+
+# NAT rules (including TCPMSS for MTU issues)
+wsctl nat create masquerade --interface=eth0
+wsctl nat create tcpmss --interface=wg0 --source=10.0.0.0/24 --mss=1360
+wsctl nat apply
+
+# Routes
+wsctl route create 192.168.1.0/24 --comment="Internal network"
+wsctl route apply
+```
 
 **Deployment Options** (see [server/deploy/](server/deploy/)):
 - **systemd** - Linux service
