@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
-	"wire-socket-server/internal/route"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -13,30 +12,21 @@ import (
 
 // AdminHandler handles admin API endpoints
 type AdminHandler struct {
-	db           *database.DB
-	natManager   *nat.Manager
-	routeManager *route.Manager
-	wgDevice     string // WireGuard device name for default routing
+	db         *database.DB
+	natManager *nat.Manager
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *database.DB, natManager *nat.Manager, routeManager *route.Manager, wgDevice string) *AdminHandler {
+func NewAdminHandler(db *database.DB, natManager *nat.Manager) *AdminHandler {
 	return &AdminHandler{
-		db:           db,
-		natManager:   natManager,
-		routeManager: routeManager,
-		wgDevice:     wgDevice,
+		db:         db,
+		natManager: natManager,
 	}
 }
 
 // SetNATManager sets the NAT manager (for dynamic updates)
 func (h *AdminHandler) SetNATManager(natManager *nat.Manager) {
 	h.natManager = natManager
-}
-
-// SetRouteManager sets the route manager (for dynamic updates)
-func (h *AdminHandler) SetRouteManager(routeManager *route.Manager) {
-	h.routeManager = routeManager
 }
 
 // ============ User Management ============
@@ -300,47 +290,6 @@ func (h *AdminHandler) GetEnabledRoutes() ([]string, error) {
 		cidrs[i] = r.CIDR
 	}
 	return cidrs, nil
-}
-
-// ApplyRoutes reloads and applies all routes to the server routing table
-func (h *AdminHandler) ApplyRoutes(c *gin.Context) {
-	// Load all enabled routes from database
-	var routes []database.Route
-	if err := h.db.Where("enabled = ?", true).Find(&routes).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch routes"})
-		return
-	}
-
-	// Build route config from database
-	config := route.Config{
-		DefaultDevice: h.wgDevice,
-	}
-
-	for _, r := range routes {
-		config.Routes = append(config.Routes, route.Route{
-			CIDR:    r.CIDR,
-			Gateway: r.Gateway,
-			Device:  r.Device,
-		})
-	}
-
-	// Cleanup existing routes and apply new ones
-	if h.routeManager != nil {
-		h.routeManager.Cleanup()
-	}
-	newManager := route.NewManager(config)
-	if err := newManager.Apply(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to apply routes: " + err.Error()})
-		return
-	}
-
-	// Update the manager reference
-	h.routeManager = newManager
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "routes applied successfully",
-		"count":   len(config.Routes),
-	})
 }
 
 // ============ NAT Rule Management ============

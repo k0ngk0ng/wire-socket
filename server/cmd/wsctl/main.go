@@ -8,7 +8,6 @@ import (
 	"text/tabwriter"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
-	"wire-socket-server/internal/route"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
@@ -120,7 +119,6 @@ Commands:
     --enabled=true|false        Set enabled status
     --push-to-client=true|false Push to clients
   route delete <id>             Delete a route
-  route apply                   Apply routes to server routing table
 
   nat list                      List all NAT rules
   nat create <type> [options]   Create NAT rule
@@ -342,8 +340,6 @@ func handleRouteCommand(db *database.DB, config *Config, args []string) {
 			os.Exit(1)
 		}
 		deleteRoute(db, args[1])
-	case "apply":
-		applyRoutes(db, config)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown route subcommand: %s\n", args[0])
 		os.Exit(1)
@@ -464,42 +460,6 @@ func deleteRoute(db *database.DB, idStr string) {
 	}
 
 	fmt.Printf("Route deleted: ID=%d\n", route.ID)
-}
-
-func applyRoutes(db *database.DB, config *Config) {
-	var routes []database.Route
-	if err := db.Where("enabled = ?", true).Find(&routes).Error; err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading routes: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Build route config
-	routeConfig := route.Config{
-		DefaultDevice: config.WireGuard.DeviceName,
-	}
-
-	for _, r := range routes {
-		// Only apply server-side routes (not just client-push routes)
-		routeConfig.Routes = append(routeConfig.Routes, route.Route{
-			CIDR:    r.CIDR,
-			Gateway: r.Gateway,
-			Device:  r.Device,
-		})
-	}
-
-	if len(routeConfig.Routes) == 0 {
-		fmt.Println("No routes to apply")
-		return
-	}
-
-	// Apply routes
-	manager := route.NewManager(routeConfig)
-	if err := manager.Apply(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error applying routes: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Routes applied: %d routes\n", len(routeConfig.Routes))
 }
 
 // ============ NAT Commands ============

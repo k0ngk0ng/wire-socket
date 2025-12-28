@@ -76,7 +76,6 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 			admin.POST("/routes", r.adminHandler.CreateRoute)
 			admin.PUT("/routes/:id", r.adminHandler.UpdateRoute)
 			admin.DELETE("/routes/:id", r.adminHandler.DeleteRoute)
-			admin.POST("/routes/apply", r.adminHandler.ApplyRoutes)
 
 			// NAT rule management
 			admin.GET("/nat", r.adminHandler.ListNATRules)

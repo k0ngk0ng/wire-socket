@@ -134,10 +134,9 @@ wsctl user create alice alice@example.com secret123 --admin
 wsctl user update 1 --admin=true
 wsctl user delete 2
 
-# Route management
+# Route management (routes are pushed to clients only, not applied on server)
 wsctl route list
 wsctl route create 192.168.1.0/24 --comment="Internal network"
-wsctl route apply
 
 # NAT rule management
 wsctl nat list

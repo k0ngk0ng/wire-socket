@@ -15,7 +15,6 @@ import (
 	"wire-socket-server/internal/auth"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
-	"wire-socket-server/internal/route"
 	"wire-socket-server/internal/tunnel"
 	"wire-socket-server/internal/wireguard"
 
@@ -283,15 +282,8 @@ func main() {
 		log.Printf("Warning: failed to apply NAT rules: %v", err)
 	}
 
-	// Initialize route manager - load from database
-	routeConfig := loadRouteConfig(db, config.WireGuard.DeviceName)
-	routeManager := route.NewManager(routeConfig)
-	if err := routeManager.Apply(); err != nil {
-		log.Printf("Warning: failed to apply routes: %v", err)
-	}
-
 	// Initialize admin handler
-	adminHandler := api.NewAdminHandler(db, natManager, routeManager, config.WireGuard.DeviceName)
+	adminHandler := api.NewAdminHandler(db, natManager)
 
 	apiRouter := api.NewRouter(authHandler, adminHandler, db, configGen, tunnelURL, config.WireGuard.Subnet)
 	apiRouter.SetupRoutes(engine)
@@ -339,7 +331,6 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("\nShutting down...")
-		routeManager.Cleanup()
 		natManager.Cleanup()
 		if tunnelServer != nil {
 			tunnelServer.Stop()
@@ -541,27 +532,4 @@ func loadNATConfig(db *database.DB, config *Config) nat.Config {
 	}
 
 	return natConfig
-}
-
-// loadRouteConfig loads route configuration from database
-func loadRouteConfig(db *database.DB, defaultDevice string) route.Config {
-	routeConfig := route.Config{
-		DefaultDevice: defaultDevice,
-	}
-
-	var routes []database.Route
-	if err := db.Where("enabled = ?", true).Find(&routes).Error; err == nil && len(routes) > 0 {
-		log.Printf("Loading routes from database (%d routes)", len(routes))
-		for _, r := range routes {
-			routeConfig.Routes = append(routeConfig.Routes, route.Route{
-				CIDR:    r.CIDR,
-				Gateway: r.Gateway,
-				Device:  r.Device,
-			})
-		}
-	} else {
-		log.Println("No routes in database")
-	}
-
-	return routeConfig
 }
