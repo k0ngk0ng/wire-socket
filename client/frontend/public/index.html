@@ -296,7 +296,7 @@
   <div class="container">
     <div class="header">
       <div class="header-left">
-        <h1>
+        <h1 id="appTitle" style="cursor: default; user-select: none;">
           <span class="app-icon">🔐</span>
           WireSocket
         </h1>
@@ -618,6 +618,32 @@
         statusCheckInterval = null;
       }
     }
+
+    // Dev tools activation - click logo 4 times
+    let devToolsClickCount = 0;
+    let devToolsClickTimer = null;
+    const appTitle = document.getElementById('appTitle');
+
+    appTitle.addEventListener('click', () => {
+      devToolsClickCount++;
+
+      // Reset counter after 2 seconds of no clicks
+      if (devToolsClickTimer) {
+        clearTimeout(devToolsClickTimer);
+      }
+      devToolsClickTimer = setTimeout(() => {
+        devToolsClickCount = 0;
+      }, 2000);
+
+      // Activate dev tools after 4 clicks
+      if (devToolsClickCount >= 4) {
+        devToolsClickCount = 0;
+        if (window.electronAPI && window.electronAPI.activateDevTools) {
+          window.electronAPI.activateDevTools();
+          console.log('Dev tools activated! Press Cmd+Option+I (macOS) or Ctrl+Shift+I (Windows/Linux)');
+        }
+      }
+    });
 
     // Start waiting for backend on page load
     waitForBackend();

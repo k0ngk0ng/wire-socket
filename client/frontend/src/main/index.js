@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, nativeImage, globalShortcut } = require('electron');
 const path = require('path');
 const axios = require('axios');
 const sudo = require('@vscode/sudo-prompt');
 const fs = require('fs');
 const { execSync } = require('child_process');
+
+// Dev tools activation state
+let devToolsActivated = false;
 
 // Default port, will be updated if a port file exists
 const DEFAULT_PORT = 41945;
@@ -641,4 +644,30 @@ ipcMain.handle('api:addServer', async (event, server) => {
 ipcMain.handle('tray:updateStatus', async (event, isConnected) => {
   updateTrayMenu(isConnected);
   return { success: true };
+});
+
+// Dev tools activation handler
+ipcMain.handle('devtools:activate', async () => {
+  devToolsActivated = true;
+  console.log('Dev tools activated - press Cmd+Option+I (macOS) or Ctrl+Shift+I (Windows/Linux) to open');
+
+  // Auto-deactivate after 10 seconds if not used
+  setTimeout(() => {
+    devToolsActivated = false;
+  }, 10000);
+
+  return { success: true };
+});
+
+// Register keyboard shortcut for dev tools (only works when activated)
+app.whenReady().then(() => {
+  // Disable default dev tools shortcut by intercepting it
+  const shortcut = process.platform === 'darwin' ? 'CommandOrControl+Option+I' : 'Control+Shift+I';
+
+  globalShortcut.register(shortcut, () => {
+    if (devToolsActivated && mainWindow) {
+      mainWindow.webContents.toggleDevTools();
+      devToolsActivated = false; // Reset after use
+    }
+  });
 });
