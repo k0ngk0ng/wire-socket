@@ -59,11 +59,26 @@ jobs:
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
             go build -ldflags="-s -w -X main.Version=$VERSION" -o wire-socket-server-${{ matrix.suffix }} ./cmd/server
 
-      - name: Upload artifact
+      - name: Build wsctl
+        working-directory: server
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # wsctl suffix (no .exe for unix, .exe for windows)
+          SUFFIX="${{ matrix.suffix }}"
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -ldflags="-s -w -X main.Version=$VERSION" -o wsctl-$SUFFIX ./cmd/wsctl
+
+      - name: Upload server artifact
         uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.suffix }}
           path: server/wire-socket-server-${{ matrix.suffix }}
+
+      - name: Upload wsctl artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsctl-${{ matrix.suffix }}
+          path: server/wsctl-${{ matrix.suffix }}
 
   # Build client on native platforms
   build-client-macos:
@@ -268,6 +283,8 @@ jobs:
           mkdir -p release
           # Server binaries
           find artifacts -name 'wire-socket-server-*' -exec cp {} release/ \;
+          # wsctl binaries
+          find artifacts -name 'wsctl-*' -exec cp {} release/ \;
           # Client packages
           find artifacts -name '*.dmg' -exec cp {} release/ \;
           find artifacts -name '*.zip' -exec cp {} release/ \;

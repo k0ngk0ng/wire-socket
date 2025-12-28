@@ -4,6 +4,13 @@ server:
   # HTTP server address
   address: "0.0.0.0:8080"
 
+  # Log level: debug, info, warn, error (default: info)
+  # debug - verbose logging including Gin request logs
+  # info  - normal logging (default)
+  # warn  - warnings and errors only
+  # error - errors only (minimal output)
+  log_level: "info"
+
   # HTTPS configuration (optional, comment out for HTTP only)
   # tls:
   #   cert_file: "/etc/letsencrypt/live/vpn.example.com/fullchain.pem"
