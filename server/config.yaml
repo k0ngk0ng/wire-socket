@@ -109,3 +109,13 @@ nat:
     #   protocol: "tcp"               # tcp or udp
     #   port: 8080                    # External port
     #   to_destination: "10.250.2.5:80"  # Forward to VPN client
+
+  # TCPMSS rules - MSS clamping to prevent MTU issues
+  # Useful when traffic traverses multiple links (e.g., WireGuard over WebSocket)
+  tcpmss: []
+    # - interface: "wg0"              # Outbound interface
+    #   source: "10.233.64.0/18"      # Source CIDR
+    #   mss: 1360                     # MSS value (typical: 1360 for WG over WSS)
+    # - interface: "wg0"
+    #   source: "100.100.0.0/16"
+    #   mss: 1360
