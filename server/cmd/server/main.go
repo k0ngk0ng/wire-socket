@@ -3,10 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"wire-socket-server/internal/admin"
 	"wire-socket-server/internal/api"
@@ -26,11 +28,41 @@ import (
 // Version is set at build time via -ldflags
 var Version = "dev"
 
+// Log level constants
+const (
+	LogLevelDebug = iota
+	LogLevelInfo
+	LogLevelWarn
+	LogLevelError
+)
+
+var currentLogLevel = LogLevelInfo
+
+// setupLogging configures log level based on config
+func setupLogging(level string) {
+	switch strings.ToLower(level) {
+	case "debug":
+		currentLogLevel = LogLevelDebug
+		gin.SetMode(gin.DebugMode)
+	case "warn", "warning":
+		currentLogLevel = LogLevelWarn
+		gin.SetMode(gin.ReleaseMode)
+	case "error":
+		currentLogLevel = LogLevelError
+		gin.SetMode(gin.ReleaseMode)
+		log.SetOutput(io.Discard) // Suppress all but fatal logs
+	default: // "info" or unset
+		currentLogLevel = LogLevelInfo
+		gin.SetMode(gin.ReleaseMode)
+	}
+}
+
 // Config represents the server configuration
 type Config struct {
 	Server struct {
-		Address string `yaml:"address"`
-		TLS     *struct {
+		Address  string `yaml:"address"`
+		LogLevel string `yaml:"log_level"` // debug, info, warn, error (default: info)
+		TLS      *struct {
 			CertFile string `yaml:"cert_file"`
 			KeyFile  string `yaml:"key_file"`
 		} `yaml:"tls"`
@@ -101,6 +133,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	// Setup logging based on config
+	setupLogging(config.Server.LogLevel)
 
 	// Initialize database
 	db, err := database.NewDB(config.Database.Path)
@@ -214,7 +249,6 @@ func main() {
 	authHandler := auth.NewHandler(db, config.Auth.JWTSecret, config.Auth.AllowRegistration)
 
 	// Set up Gin router
-	gin.SetMode(gin.ReleaseMode)
 	engine := gin.Default()
 
 	// Enable CORS
