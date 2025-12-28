@@ -6,6 +6,7 @@
 *.dylib
 wire-socket-server
 wire-socket-client
+wsctl
 vpn-server
 vpn-client
 
