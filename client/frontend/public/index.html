@@ -270,6 +270,26 @@
       font-size: 14px;
       margin-top: 4px;
     }
+
+    .checkbox-group {
+      margin-bottom: 20px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-right: 8px;
+      cursor: pointer;
+      accent-color: #667eea;
+    }
   </style>
 </head>
 <body>
@@ -296,7 +316,7 @@
     <div id="loginForm" class="hidden">
       <div class="form-group">
         <label for="serverAddress">Server Address</label>
-        <input type="text" id="serverAddress" placeholder="vpn.example.com:8080" value="vpn.example.com">
+        <input type="text" id="serverAddress" placeholder="vpn.example.com:8080" value="">
       </div>
 
       <div class="form-group">
@@ -307,6 +327,13 @@
       <div class="form-group">
         <label for="password">Password</label>
         <input type="password" id="password" placeholder="Enter your password" value="">
+      </div>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="rememberPassword">
+          <span>Remember password</span>
+        </label>
       </div>
 
       <button class="btn btn-primary" id="connectBtn" onclick="connect()">
@@ -358,9 +385,44 @@
     const connectedView = document.getElementById('connectedView');
     const errorMessage = document.getElementById('errorMessage');
     const connectBtn = document.getElementById('connectBtn');
+    const rememberPasswordCheckbox = document.getElementById('rememberPassword');
 
     let statusCheckInterval = null;
     let backendReady = false;
+
+    // Load saved credentials on page load
+    function loadSavedCredentials() {
+      const savedServer = localStorage.getItem('wiresocket_server');
+      const savedUsername = localStorage.getItem('wiresocket_username');
+      const savedRemember = localStorage.getItem('wiresocket_remember') === 'true';
+      const savedPassword = localStorage.getItem('wiresocket_password');
+
+      if (savedServer) {
+        document.getElementById('serverAddress').value = savedServer;
+      }
+      if (savedUsername) {
+        document.getElementById('username').value = savedUsername;
+      }
+      rememberPasswordCheckbox.checked = savedRemember;
+      if (savedRemember && savedPassword) {
+        document.getElementById('password').value = savedPassword;
+      }
+    }
+
+    // Save credentials after successful connection
+    function saveCredentials(serverAddress, username, password) {
+      localStorage.setItem('wiresocket_server', serverAddress);
+      localStorage.setItem('wiresocket_username', username);
+
+      const remember = rememberPasswordCheckbox.checked;
+      localStorage.setItem('wiresocket_remember', remember.toString());
+
+      if (remember) {
+        localStorage.setItem('wiresocket_password', password);
+      } else {
+        localStorage.removeItem('wiresocket_password');
+      }
+    }
 
     // Listen for service status from main process
     if (window.electronAPI && window.electronAPI.onServiceStatus) {
@@ -413,6 +475,9 @@
       loadingView.classList.add('hidden');
       loginForm.classList.remove('hidden');
 
+      // Load saved credentials
+      loadSavedCredentials();
+
       // Check current VPN status
       checkStatus();
     }
@@ -438,6 +503,8 @@
       });
 
       if (result.success) {
+        // Save credentials on successful connection
+        saveCredentials(serverAddress, username, password);
         updateStatus('connecting');
         startStatusCheck();
       } else {
