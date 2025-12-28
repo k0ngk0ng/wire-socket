@@ -33,7 +33,7 @@
     .header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       margin-bottom: 30px;
     }
 
@@ -48,6 +48,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      margin: 0;
     }
 
     .app-icon {
@@ -60,6 +61,8 @@
       border-radius: 50%;
       background-color: #e74c3c;
       transition: background-color 0.3s;
+      flex-shrink: 0;
+      margin-top: 5px;
     }
 
     .backend-indicator.online {
