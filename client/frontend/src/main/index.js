@@ -100,6 +100,62 @@ async function checkBackendService() {
   }
 }
 
+// Get backend service version
+async function getBackendVersion() {
+  try {
+    const response = await axios.get(`${getApiBase()}/health`, { timeout: 2000 });
+    return response.data?.version || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Get local binary version
+function getLocalBinaryVersion() {
+  try {
+    const backendPath = getBackendPath();
+    if (!fs.existsSync(backendPath)) return null;
+    const result = execSync(`"${backendPath}" -version`, { encoding: 'utf-8', timeout: 5000 });
+    // Parse "wire-socket-client version X.X.X" format
+    const match = result.match(/version\s+(\S+)/);
+    return match ? match[1] : null;
+  } catch (error) {
+    console.log('Could not get local binary version:', error.message);
+    return null;
+  }
+}
+
+// Restart service to load new version (macOS)
+function restartService() {
+  return new Promise((resolve, reject) => {
+    const platform = process.platform;
+
+    let command;
+    if (platform === 'darwin') {
+      command = 'launchctl kickstart -k system/WireSocketClient';
+    } else if (platform === 'linux') {
+      command = 'systemctl restart WireSocketClient';
+    } else if (platform === 'win32') {
+      command = 'net stop WireSocketClient && net start WireSocketClient';
+    } else {
+      resolve(); // Skip for unknown platforms
+      return;
+    }
+
+    const options = { name: 'WireSocket VPN' };
+
+    console.log('Restarting service to load new version...');
+
+    sudo.exec(command, options, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Service restart error:', error);
+        // Don't reject, service might still work
+      }
+      resolve();
+    });
+  });
+}
+
 // Check if macOS launchd plist exists (without sudo)
 function isMacOSServiceInstalled() {
   if (process.platform !== 'darwin') return false;
@@ -225,6 +281,28 @@ async function ensureServiceRunning() {
   // First check if already running (try multiple ports)
   if (await findServicePort()) {
     console.log(`Backend service is already running on port ${currentPort}`);
+
+    // Check if we need to restart for version update
+    const runningVersion = await getBackendVersion();
+    const localVersion = getLocalBinaryVersion();
+
+    if (runningVersion && localVersion && runningVersion !== localVersion) {
+      console.log(`Version mismatch: running ${runningVersion}, local ${localVersion}`);
+      console.log('Restarting service to load new version...');
+
+      try {
+        await restartService();
+        // Wait for service to restart
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        if (await findServicePort()) {
+          console.log('Service restarted successfully with new version');
+        }
+      } catch (error) {
+        console.error('Failed to restart service:', error);
+        // Continue with old version
+      }
+    }
+
     return true;
   }
 
