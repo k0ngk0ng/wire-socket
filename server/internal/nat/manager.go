@@ -29,12 +29,20 @@ type DNATRule struct {
 	ToDestination string // Forward to this address:port (e.g., "10.250.2.5:80")
 }
 
+// TCPMSSRule represents a TCP MSS clamping rule (mangle table)
+type TCPMSSRule struct {
+	Interface string // Outbound interface (e.g., "wg0")
+	Source    string // Source CIDR (e.g., "10.0.0.0/24")
+	MSS       int    // MSS value (e.g., 1360)
+}
+
 // Config holds NAT configuration
 type Config struct {
 	Enabled    bool
 	Masquerade []MasqueradeRule
 	SNAT       []SNATRule
 	DNAT       []DNATRule
+	TCPMSS     []TCPMSSRule
 }
 
 // Manager manages iptables NAT rules
@@ -84,8 +92,15 @@ func (m *Manager) Apply() error {
 		}
 	}
 
-	log.Printf("NAT rules applied: %d masquerade, %d SNAT, %d DNAT",
-		len(m.config.Masquerade), len(m.config.SNAT), len(m.config.DNAT))
+	// Apply TCPMSS rules (mangle table for MSS clamping)
+	for _, rule := range m.config.TCPMSS {
+		if err := m.applyTCPMSS(rule); err != nil {
+			log.Printf("Warning: failed to apply TCPMSS rule: %v", err)
+		}
+	}
+
+	log.Printf("NAT rules applied: %d masquerade, %d SNAT, %d DNAT, %d TCPMSS",
+		len(m.config.Masquerade), len(m.config.SNAT), len(m.config.DNAT), len(m.config.TCPMSS))
 
 	return nil
 }
@@ -201,5 +216,32 @@ func (m *Manager) applyDNAT(rule DNATRule) error {
 	m.appliedRules = append(m.appliedRules, ruleStr)
 	log.Printf("Applied DNAT rule: %s %s:%d -> %s",
 		rule.Protocol, rule.Interface, rule.Port, rule.ToDestination)
+	return nil
+}
+
+// applyTCPMSS applies a TCP MSS clamping rule to the mangle table
+// This prevents MTU issues when traffic traverses multiple links (e.g., WireGuard over WebSocket)
+func (m *Manager) applyTCPMSS(rule TCPMSSRule) error {
+	// iptables -t mangle -A POSTROUTING -o wg0 -s 10.0.0.0/24 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360
+	ruleStr := fmt.Sprintf("-t mangle -A POSTROUTING -o %s -s %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss %d",
+		rule.Interface, rule.Source, rule.MSS)
+
+	// Check if rule already exists
+	checkArgs := strings.Replace(ruleStr, " -A ", " -C ", 1)
+	checkCmd := exec.Command("iptables", strings.Fields(checkArgs)...)
+	if checkCmd.Run() == nil {
+		log.Printf("TCPMSS rule already exists: -o %s -s %s --set-mss %d", rule.Interface, rule.Source, rule.MSS)
+		return nil
+	}
+
+	// Apply the rule
+	cmd := exec.Command("iptables", strings.Fields(ruleStr)...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(string(output)), err)
+	}
+
+	m.appliedRules = append(m.appliedRules, ruleStr)
+	log.Printf("Applied TCPMSS rule: -o %s -s %s --set-mss %d",
+		rule.Interface, rule.Source, rule.MSS)
 	return nil
 }
