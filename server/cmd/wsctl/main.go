@@ -130,6 +130,8 @@ Commands:
       nat create snat --interface=wg0 --source=10.0.0.0/24 --dest=192.168.1.0/24 --to-source=192.168.1.1
     For dnat:
       nat create dnat --interface=eth0 --protocol=tcp --port=8080 --to-dest=10.0.0.5:80
+    For tcpmss (MSS clamping to prevent MTU issues):
+      nat create tcpmss --interface=wg0 --source=10.0.0.0/24 --mss=1360
   nat update <id> [options]     Update NAT rule
   nat delete <id>               Delete NAT rule
   nat apply                     Apply NAT rules to iptables
@@ -559,6 +561,8 @@ func listNATRules(db *database.DB) {
 			details = fmt.Sprintf("%s -> %s", r.Source, r.ToSource)
 		case database.NATTypeDNAT:
 			details = fmt.Sprintf("%s:%d -> %s", r.Protocol, r.Port, r.ToDestination)
+		case database.NATTypeTCPMSS:
+			details = fmt.Sprintf("%s mss=%d", r.Source, r.MSS)
 		}
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%v\n", r.ID, r.Type, r.Interface, details, r.Enabled)
 	}
@@ -589,6 +593,9 @@ func createNATRule(db *database.DB, ruleType string, opts []string) {
 			rule.ToDestination = strings.TrimPrefix(strings.TrimPrefix(opt, "--to-dest="), "--to-destination=")
 		} else if strings.HasPrefix(opt, "--comment=") {
 			rule.Comment = strings.TrimPrefix(opt, "--comment=")
+		} else if strings.HasPrefix(opt, "--mss=") {
+			mss, _ := strconv.Atoi(strings.TrimPrefix(opt, "--mss="))
+			rule.MSS = mss
 		}
 	}
 
@@ -611,8 +618,13 @@ func createNATRule(db *database.DB, ruleType string, opts []string) {
 			fmt.Fprintln(os.Stderr, "Error: DNAT requires --protocol, --port, and --to-dest")
 			os.Exit(1)
 		}
+	case database.NATTypeTCPMSS:
+		if rule.Source == "" || rule.MSS == 0 {
+			fmt.Fprintln(os.Stderr, "Error: TCPMSS requires --source and --mss")
+			os.Exit(1)
+		}
 	default:
-		fmt.Fprintf(os.Stderr, "Error: Invalid NAT type: %s (use: masquerade, snat, dnat)\n", ruleType)
+		fmt.Fprintf(os.Stderr, "Error: Invalid NAT type: %s (use: masquerade, snat, dnat, tcpmss)\n", ruleType)
 		os.Exit(1)
 	}
 
@@ -657,6 +669,9 @@ func updateNATRule(db *database.DB, idStr string, opts []string) {
 			rule.Comment = strings.TrimPrefix(opt, "--comment=")
 		} else if strings.HasPrefix(opt, "--enabled=") {
 			rule.Enabled = strings.TrimPrefix(opt, "--enabled=") == "true"
+		} else if strings.HasPrefix(opt, "--mss=") {
+			mss, _ := strconv.Atoi(strings.TrimPrefix(opt, "--mss="))
+			rule.MSS = mss
 		}
 	}
 
@@ -726,6 +741,12 @@ func applyNATRules(db *database.DB, config *Config) {
 				Port:          rule.Port,
 				ToDestination: rule.ToDestination,
 			})
+		case database.NATTypeTCPMSS:
+			natConfig.TCPMSS = append(natConfig.TCPMSS, nat.TCPMSSRule{
+				Interface: rule.Interface,
+				Source:    rule.Source,
+				MSS:       rule.MSS,
+			})
 		}
 	}
 
@@ -736,8 +757,8 @@ func applyNATRules(db *database.DB, config *Config) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("NAT rules applied: %d masquerade, %d SNAT, %d DNAT\n",
-		len(natConfig.Masquerade), len(natConfig.SNAT), len(natConfig.DNAT))
+	fmt.Printf("NAT rules applied: %d masquerade, %d SNAT, %d DNAT, %d TCPMSS\n",
+		len(natConfig.Masquerade), len(natConfig.SNAT), len(natConfig.DNAT), len(natConfig.TCPMSS))
 }
 
 // Helper functions

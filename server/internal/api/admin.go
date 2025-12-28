@@ -369,6 +369,7 @@ func (h *AdminHandler) CreateNATRule(c *gin.Context) {
 		Protocol      string               `json:"protocol"`
 		Port          int                  `json:"port"`
 		ToDestination string               `json:"to_destination"`
+		MSS           int                  `json:"mss"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -393,6 +394,11 @@ func (h *AdminHandler) CreateNATRule(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "interface, protocol, port, and to_destination are required for DNAT rule"})
 			return
 		}
+	case database.NATTypeTCPMSS:
+		if req.Interface == "" || req.Source == "" || req.MSS == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "interface, source, and mss are required for TCPMSS rule"})
+			return
+		}
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rule type"})
 		return
@@ -414,6 +420,7 @@ func (h *AdminHandler) CreateNATRule(c *gin.Context) {
 		Protocol:      req.Protocol,
 		Port:          req.Port,
 		ToDestination: req.ToDestination,
+		MSS:           req.MSS,
 	}
 
 	if err := h.db.Create(&rule).Error; err != nil {
@@ -448,6 +455,7 @@ func (h *AdminHandler) UpdateNATRule(c *gin.Context) {
 		Protocol      string `json:"protocol"`
 		Port          int    `json:"port"`
 		ToDestination string `json:"to_destination"`
+		MSS           int    `json:"mss"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -481,6 +489,9 @@ func (h *AdminHandler) UpdateNATRule(c *gin.Context) {
 	}
 	if req.ToDestination != "" {
 		rule.ToDestination = req.ToDestination
+	}
+	if req.MSS != 0 {
+		rule.MSS = req.MSS
 	}
 
 	if err := h.db.Save(&rule).Error; err != nil {
@@ -552,6 +563,12 @@ func (h *AdminHandler) ApplyNATRules(c *gin.Context) {
 				Port:          rule.Port,
 				ToDestination: rule.ToDestination,
 			})
+		case database.NATTypeTCPMSS:
+			config.TCPMSS = append(config.TCPMSS, nat.TCPMSSRule{
+				Interface: rule.Interface,
+				Source:    rule.Source,
+				MSS:       rule.MSS,
+			})
 		}
 	}
 
@@ -571,5 +588,6 @@ func (h *AdminHandler) ApplyNATRules(c *gin.Context) {
 		"masquerade": len(config.Masquerade),
 		"snat":       len(config.SNAT),
 		"dnat":       len(config.DNAT),
+		"tcpmss":     len(config.TCPMSS),
 	})
 }

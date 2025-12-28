@@ -79,6 +79,7 @@ const (
 	NATTypeMasquerade NATRuleType = "masquerade"
 	NATTypeSNAT       NATRuleType = "snat"
 	NATTypeDNAT       NATRuleType = "dnat"
+	NATTypeTCPMSS     NATRuleType = "tcpmss"
 )
 
 // NATRule represents a NAT/iptables rule
@@ -102,6 +103,9 @@ type NATRule struct {
 	Protocol      string `json:"protocol,omitempty"`       // tcp or udp
 	Port          int    `json:"port,omitempty"`           // External port
 	ToDestination string `json:"to_destination,omitempty"` // Forward to address:port
+
+	// For TCPMSS (MSS clamping to prevent MTU issues)
+	MSS int `json:"mss,omitempty"` // MSS value (e.g., 1360)
 }
 
 // DB holds the database connection

@@ -471,6 +471,12 @@ func loadNATConfig(db *database.DB, config *Config) nat.Config {
 					Port:          rule.Port,
 					ToDestination: rule.ToDestination,
 				})
+			case database.NATTypeTCPMSS:
+				natConfig.TCPMSS = append(natConfig.TCPMSS, nat.TCPMSSRule{
+					Interface: rule.Interface,
+					Source:    rule.Source,
+					MSS:       rule.MSS,
+				})
 			}
 		}
 		return natConfig
