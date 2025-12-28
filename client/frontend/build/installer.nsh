@@ -6,17 +6,31 @@
   ; Set permissions for binaries
   DetailPrint "Setting up WireSocket binaries..."
 
-  ; Create a service for wire-socket-client
-  ; Note: We use nssm (Non-Sucking Service Manager) if available
-  ; Otherwise, provide instructions to user
+  ; Install the backend as a Windows service
+  DetailPrint "Installing WireSocket Client Service..."
 
-  DetailPrint "WireSocket client backend will be installed as a service"
-  DetailPrint "You may need to restart your computer for changes to take effect"
+  ; First, try to stop and delete any existing service
+  nsExec::ExecToLog 'net stop WireSocketClient'
+  nsExec::ExecToLog 'sc delete WireSocketClient'
+
+  ; Install the service using the backend binary
+  nsExec::ExecToLog '"$INSTDIR\resources\bin\wire-socket-client.exe" -service install'
+
+  ; Start the service
+  DetailPrint "Starting WireSocket Client Service..."
+  nsExec::ExecToLog 'net start WireSocketClient'
+
+  DetailPrint "WireSocket installation complete!"
 !macroend
 
 !macro customUnInstall
   ; Stop and remove service if it exists
+  DetailPrint "Stopping WireSocket service..."
+  nsExec::ExecToLog 'net stop WireSocketClient'
+
   DetailPrint "Removing WireSocket service..."
-  nsExec::ExecToLog 'net stop "WireSocket Client"'
-  nsExec::ExecToLog 'sc delete "WireSocket Client"'
+  nsExec::ExecToLog '"$INSTDIR\resources\bin\wire-socket-client.exe" -service uninstall'
+
+  ; Fallback: try sc delete
+  nsExec::ExecToLog 'sc delete WireSocketClient'
 !macroend

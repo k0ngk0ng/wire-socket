@@ -5,27 +5,7 @@
 
 set -e
 
-echo "🔧 Setting up WireSocket..."
-
-# Check if wireguard-tools is installed
-if ! command -v wg &> /dev/null; then
-    echo "📦 Installing wireguard-tools..."
-
-    # Detect package manager and install wireguard-tools
-    if command -v apt-get &> /dev/null; then
-        apt-get update
-        apt-get install -y wireguard-tools
-    elif command -v yum &> /dev/null; then
-        yum install -y wireguard-tools
-    elif command -v dnf &> /dev/null; then
-        dnf install -y wireguard-tools
-    elif command -v pacman &> /dev/null; then
-        pacman -S --noconfirm wireguard-tools
-    else
-        echo "⚠️  Could not detect package manager. Please install wireguard-tools manually."
-        echo "   Example: sudo apt install wireguard-tools"
-    fi
-fi
+echo "Setting up WireSocket..."
 
 # Get the installation directory
 INSTALL_DIR="/opt/WireSocket"
@@ -33,10 +13,20 @@ BIN_DIR="$INSTALL_DIR/resources/bin"
 
 # Set executable permissions
 chmod +x "$BIN_DIR/wire-socket-client" 2>/dev/null || true
-chmod +x "$BIN_DIR/wstunnel" 2>/dev/null || true
 
-# Create systemd service file
-cat > /etc/systemd/system/wiresocket-client.service << EOF
+# Create data directory for the service
+mkdir -p /var/lib/wiresocket
+chmod 755 /var/lib/wiresocket
+
+# Create systemd service file using the backend's service installer
+# The backend binary handles service installation properly
+if [ -f "$BIN_DIR/wire-socket-client" ]; then
+    "$BIN_DIR/wire-socket-client" -service install 2>/dev/null || true
+fi
+
+# If the service file doesn't exist, create it manually
+if [ ! -f /etc/systemd/system/WireSocketClient.service ]; then
+    cat > /etc/systemd/system/WireSocketClient.service << EOF
 [Unit]
 Description=WireSocket VPN Client Service
 After=network.target
@@ -45,19 +35,22 @@ After=network.target
 Type=simple
 ExecStart=$BIN_DIR/wire-socket-client
 Restart=on-failure
+RestartSec=5
 User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
 
 # Reload systemd and enable service
 systemctl daemon-reload
-systemctl enable wiresocket-client.service
+systemctl enable WireSocketClient.service 2>/dev/null || true
 
-echo "✅ WireSocket installed successfully!"
+# Start the service
+systemctl start WireSocketClient.service 2>/dev/null || true
+
+echo "WireSocket installed successfully!"
 echo ""
-echo "To start the service manually:"
-echo "  sudo systemctl start wiresocket-client"
-echo ""
-echo "The service will start automatically on boot."
+echo "The VPN client service has been installed and started."
+echo "You can manage it with: sudo systemctl {start|stop|status} WireSocketClient"

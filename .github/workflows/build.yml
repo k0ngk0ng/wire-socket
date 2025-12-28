@@ -199,6 +199,7 @@ jobs:
           name: client-windows
           path: |
             client/dist/*.exe
+            client/dist/*.msi
 
   build-client-linux:
     runs-on: ubuntu-latest
@@ -289,6 +290,7 @@ jobs:
           find artifacts -name '*.dmg' -exec cp {} release/ \;
           find artifacts -name '*.zip' -exec cp {} release/ \;
           find artifacts -name '*.exe' -exec cp {} release/ \;
+          find artifacts -name '*.msi' -exec cp {} release/ \;
           find artifacts -name '*.AppImage' -exec cp {} release/ \;
           find artifacts -name '*.deb' -exec cp {} release/ \;
           find artifacts -name '*.rpm' -exec cp {} release/ \;
