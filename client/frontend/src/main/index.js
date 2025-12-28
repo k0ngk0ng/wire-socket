@@ -3,8 +3,67 @@ const path = require('path');
 const axios = require('axios');
 const sudo = require('@vscode/sudo-prompt');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
-const API_BASE = 'http://127.0.0.1:41945';
+// Default port, will be updated if a port file exists
+const DEFAULT_PORT = 41945;
+const MAX_PORT_TRIES = 10;
+let currentPort = DEFAULT_PORT;
+
+function getApiBase() {
+  return `http://127.0.0.1:${currentPort}`;
+}
+
+// Get the path to the port file
+function getPortFilePath() {
+  if (process.platform === 'win32') {
+    return path.join(process.env.TEMP || 'C:\\Windows\\Temp', 'wiresocket-port');
+  }
+  return '/tmp/wiresocket-port';
+}
+
+// Read the port from the port file
+function readPortFromFile() {
+  try {
+    const portFile = getPortFilePath();
+    if (fs.existsSync(portFile)) {
+      const content = fs.readFileSync(portFile, 'utf-8').trim();
+      const port = parseInt(content, 10);
+      if (!isNaN(port) && port > 0 && port < 65536) {
+        return port;
+      }
+    }
+  } catch (error) {
+    console.log('Could not read port file:', error.message);
+  }
+  return DEFAULT_PORT;
+}
+
+// Try to find the running service by checking multiple ports
+async function findServicePort() {
+  // First check the port file
+  const filePort = readPortFromFile();
+  currentPort = filePort;
+
+  if (await checkBackendService()) {
+    console.log(`Found service on port ${currentPort} (from port file)`);
+    return true;
+  }
+
+  // If port file port didn't work, try scanning ports
+  for (let i = 0; i < MAX_PORT_TRIES; i++) {
+    const port = DEFAULT_PORT + i;
+    currentPort = port;
+    if (await checkBackendService()) {
+      console.log(`Found service on port ${currentPort} (by scanning)`);
+      return true;
+    }
+  }
+
+  // Reset to default
+  currentPort = DEFAULT_PORT;
+  return false;
+}
 
 let mainWindow = null;
 let tray = null;
@@ -34,9 +93,26 @@ function getBackendPath() {
 // Check if backend service is running
 async function checkBackendService() {
   try {
-    await axios.get(`${API_BASE}/health`, { timeout: 2000 });
+    const response = await axios.get(`${getApiBase()}/health`, { timeout: 2000 });
     return true;
   } catch (error) {
+    return false;
+  }
+}
+
+// Check if macOS launchd plist exists (without sudo)
+function isMacOSServiceInstalled() {
+  if (process.platform !== 'darwin') return false;
+  return fs.existsSync('/Library/LaunchDaemons/WireSocketClient.plist');
+}
+
+// Check if macOS service is loaded (without sudo)
+function isMacOSServiceLoaded() {
+  if (process.platform !== 'darwin') return false;
+  try {
+    const result = execSync('launchctl list | grep WireSocketClient', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    return result.includes('WireSocketClient');
+  } catch {
     return false;
   }
 }
@@ -54,8 +130,20 @@ function installAndStartService() {
 
     let command;
     if (platform === 'darwin') {
-      // macOS: Install service and load it
-      command = `"${backendPath}" -service install && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
+      // macOS: Build command based on current state
+      const isInstalled = isMacOSServiceInstalled();
+      const isLoaded = isMacOSServiceLoaded();
+
+      if (!isInstalled) {
+        // Need to install and load
+        command = `"${backendPath}" -service install && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
+      } else if (!isLoaded) {
+        // Already installed, just need to load
+        command = `launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
+      } else {
+        // Already loaded, try to kickstart
+        command = `launchctl kickstart -k system/WireSocketClient 2>/dev/null || launchctl stop WireSocketClient && launchctl start WireSocketClient`;
+      }
     } else if (platform === 'linux') {
       // Linux: Install service and start it
       command = `"${backendPath}" -service install && systemctl start WireSocketClient`;
@@ -76,8 +164,9 @@ function installAndStartService() {
     sudo.exec(command, options, (error, stdout, stderr) => {
       if (error) {
         console.error('Service install error:', error);
-        // Check if it's just already installed
-        if (stderr && stderr.includes('already exists')) {
+        console.error('stderr:', stderr);
+        // Check if it's just already installed/loaded
+        if (stderr && (stderr.includes('already exists') || stderr.includes('already loaded') || stderr.includes('service exists'))) {
           resolve();
           return;
         }
@@ -91,13 +180,15 @@ function installAndStartService() {
 }
 
 // Start the backend service (if already installed but not running)
+// NOTE: This is only used as a fallback for non-macOS or if installAndStartService fails
 function startService() {
   return new Promise((resolve, reject) => {
     const platform = process.platform;
 
     let command;
     if (platform === 'darwin') {
-      command = 'launchctl load /Library/LaunchDaemons/WireSocketClient.plist 2>/dev/null || launchctl start WireSocketClient';
+      // For macOS, prefer launchctl kickstart
+      command = 'launchctl kickstart -k system/WireSocketClient 2>/dev/null || launchctl start WireSocketClient';
     } else if (platform === 'linux') {
       command = 'systemctl start WireSocketClient';
     } else if (platform === 'win32') {
@@ -114,7 +205,7 @@ function startService() {
     sudo.exec(command, options, (error, stdout, stderr) => {
       if (error) {
         // Ignore errors if service is already running
-        if (stderr && (stderr.includes('already loaded') || stderr.includes('already started'))) {
+        if (stderr && (stderr.includes('already loaded') || stderr.includes('already started') || stderr.includes('already running'))) {
           resolve();
           return;
         }
@@ -130,21 +221,45 @@ function startService() {
 
 // Ensure backend service is running
 async function ensureServiceRunning() {
-  // First check if already running
-  if (await checkBackendService()) {
-    console.log('Backend service is already running');
+  // First check if already running (try multiple ports)
+  if (await findServicePort()) {
+    console.log(`Backend service is already running on port ${currentPort}`);
     return true;
   }
 
   console.log('Backend service not running, attempting to start...');
 
+  // On macOS, check the service state first and only prompt once
+  if (process.platform === 'darwin') {
+    try {
+      await installAndStartService();
+      // Wait for service to start and find its port
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      if (await findServicePort()) {
+        console.log(`Backend service started successfully on port ${currentPort}`);
+        return true;
+      }
+      // If still not running, wait a bit more and try again
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (await findServicePort()) {
+        console.log(`Backend service started successfully (delayed) on port ${currentPort}`);
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to start service:', error);
+      return false;
+    }
+    return false;
+  }
+
+  // For Linux/Windows, try the original logic
   // Try to start it first (might already be installed)
   try {
     await startService();
     // Wait a bit for service to start
     await new Promise(resolve => setTimeout(resolve, 2000));
-    if (await checkBackendService()) {
-      console.log('Backend service started successfully');
+    if (await findServicePort()) {
+      console.log(`Backend service started successfully on port ${currentPort}`);
       return true;
     }
   } catch (error) {
@@ -156,8 +271,8 @@ async function ensureServiceRunning() {
     await installAndStartService();
     // Wait for service to start
     await new Promise(resolve => setTimeout(resolve, 3000));
-    if (await checkBackendService()) {
-      console.log('Backend service installed and started successfully');
+    if (await findServicePort()) {
+      console.log(`Backend service installed and started successfully on port ${currentPort}`);
       return true;
     }
   } catch (error) {
@@ -385,7 +500,7 @@ ipcMain.handle('api:checkService', async () => {
 
 ipcMain.handle('api:connect', async (event, credentials) => {
   try {
-    const response = await axios.post(`${API_BASE}/api/connect`, credentials);
+    const response = await axios.post(`${getApiBase()}/api/connect`, credentials);
     return { success: true, data: response.data };
   } catch (error) {
     return {
@@ -397,7 +512,7 @@ ipcMain.handle('api:connect', async (event, credentials) => {
 
 ipcMain.handle('api:disconnect', async () => {
   try {
-    const response = await axios.post(`${API_BASE}/api/disconnect`);
+    const response = await axios.post(`${getApiBase()}/api/disconnect`);
     return { success: true, data: response.data };
   } catch (error) {
     return {
@@ -409,7 +524,7 @@ ipcMain.handle('api:disconnect', async () => {
 
 ipcMain.handle('api:getStatus', async () => {
   try {
-    const response = await axios.get(`${API_BASE}/api/status`);
+    const response = await axios.get(`${getApiBase()}/api/status`);
     return { success: true, data: response.data };
   } catch (error) {
     return {
@@ -421,7 +536,7 @@ ipcMain.handle('api:getStatus', async () => {
 
 ipcMain.handle('api:getServers', async () => {
   try {
-    const response = await axios.get(`${API_BASE}/api/servers`);
+    const response = await axios.get(`${getApiBase()}/api/servers`);
     return { success: true, data: response.data };
   } catch (error) {
     return {
@@ -433,7 +548,7 @@ ipcMain.handle('api:getServers', async () => {
 
 ipcMain.handle('api:addServer', async (event, server) => {
   try {
-    const response = await axios.post(`${API_BASE}/api/servers`, server);
+    const response = await axios.post(`${getApiBase()}/api/servers`, server);
     return { success: true, data: response.data };
   } catch (error) {
     return {

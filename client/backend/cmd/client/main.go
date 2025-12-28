@@ -4,7 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"path/filepath"
+	"runtime"
 	"wire-socket-client/internal/api"
 	"wire-socket-client/internal/connection"
 
@@ -15,6 +18,12 @@ import (
 var Version = "dev"
 
 var logger service.Logger
+
+// Default port and range to try
+const (
+	DefaultPort = 41945
+	MaxPortTries = 10
+)
 
 // Program implements the service.Interface
 type Program struct {
@@ -28,6 +37,42 @@ func (p *Program) Start(s service.Service) error {
 	return nil
 }
 
+// getPortFilePath returns the path to the port file
+func getPortFilePath() string {
+	var dir string
+	switch runtime.GOOS {
+	case "darwin":
+		dir = "/tmp"
+	case "linux":
+		dir = "/tmp"
+	case "windows":
+		dir = os.TempDir()
+	default:
+		dir = "/tmp"
+	}
+	return filepath.Join(dir, "wiresocket-port")
+}
+
+// findAvailablePort tries ports starting from DefaultPort
+func findAvailablePort() (int, error) {
+	for i := 0; i < MaxPortTries; i++ {
+		port := DefaultPort + i
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		listener, err := net.Listen("tcp", addr)
+		if err == nil {
+			listener.Close()
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("no available port found in range %d-%d", DefaultPort, DefaultPort+MaxPortTries-1)
+}
+
+// writePortFile writes the selected port to a file
+func writePortFile(port int) error {
+	path := getPortFilePath()
+	return os.WriteFile(path, []byte(fmt.Sprintf("%d", port)), 0644)
+}
+
 func (p *Program) run() {
 	// Initialize connection manager
 	var err error
@@ -37,15 +82,29 @@ func (p *Program) run() {
 		return
 	}
 
+	// Find available port
+	port, err := findAvailablePort()
+	if err != nil {
+		logger.Errorf("Failed to find available port: %v", err)
+		return
+	}
+
+	// Write port to file so frontend can find it
+	if err := writePortFile(port); err != nil {
+		logger.Warningf("Failed to write port file: %v", err)
+		// Continue anyway, frontend will try default port
+	}
+
 	// Start local API server
-	p.apiServer = api.NewServer(p.connMgr, ":41945")
+	addr := fmt.Sprintf(":%d", port)
+	p.apiServer = api.NewServer(p.connMgr, addr)
 	if err := p.apiServer.Start(); err != nil {
 		logger.Errorf("Failed to start API server: %v", err)
 		return
 	}
 
-	logger.Info("WireSocket Client Service started successfully")
-	logger.Info("API server listening on localhost:41945")
+	logger.Infof("WireSocket Client Service started successfully")
+	logger.Infof("API server listening on localhost:%d", port)
 }
 
 func (p *Program) Stop(s service.Service) error {
