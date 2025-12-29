@@ -540,3 +540,364 @@ func (h *AdminHandler) ApplyNATRules(c *gin.Context) {
 		"tcpmss":     len(config.TCPMSS),
 	})
 }
+
+// ============ Group Management ============
+
+// ListGroups returns all groups
+func (h *AdminHandler) ListGroups(c *gin.Context) {
+	var groups []database.Group
+	if err := h.db.Find(&groups).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch groups"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"groups": groups})
+}
+
+// CreateGroup creates a new group
+func (h *AdminHandler) CreateGroup(c *gin.Context) {
+	var req struct {
+		Name        string `json:"name" binding:"required"`
+		Description string `json:"description"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	group := database.Group{
+		Name:        req.Name,
+		Description: req.Description,
+	}
+
+	if err := h.db.Create(&group).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "group already exists"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"group": group})
+}
+
+// GetGroup returns a specific group with its users and routes
+func (h *AdminHandler) GetGroup(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group id"})
+		return
+	}
+
+	var group database.Group
+	if err := h.db.First(&group, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	// Get users in this group
+	var userGroups []database.UserGroup
+	h.db.Where("group_id = ?", id).Preload("User").Find(&userGroups)
+	users := make([]database.User, len(userGroups))
+	for i, ug := range userGroups {
+		users[i] = ug.User
+	}
+
+	// Get routes in this group
+	var routeGroups []database.RouteGroup
+	h.db.Where("group_id = ?", id).Preload("Route").Find(&routeGroups)
+	routes := make([]database.Route, len(routeGroups))
+	for i, rg := range routeGroups {
+		routes[i] = rg.Route
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"group":  group,
+		"users":  users,
+		"routes": routes,
+	})
+}
+
+// UpdateGroup updates a group
+func (h *AdminHandler) UpdateGroup(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group id"})
+		return
+	}
+
+	var group database.Group
+	if err := h.db.First(&group, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if req.Name != "" {
+		group.Name = req.Name
+	}
+	if req.Description != "" {
+		group.Description = req.Description
+	}
+
+	if err := h.db.Save(&group).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update group"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"group": group})
+}
+
+// DeleteGroup deletes a group
+func (h *AdminHandler) DeleteGroup(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group id"})
+		return
+	}
+
+	var group database.Group
+	if err := h.db.First(&group, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	// Delete all user-group associations
+	h.db.Where("group_id = ?", id).Delete(&database.UserGroup{})
+
+	// Delete all route-group associations
+	h.db.Where("group_id = ?", id).Delete(&database.RouteGroup{})
+
+	// Delete the group
+	if err := h.db.Delete(&group).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete group"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "group deleted successfully"})
+}
+
+// AddUserToGroup adds a user to a group
+func (h *AdminHandler) AddUserToGroup(c *gin.Context) {
+	groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group id"})
+		return
+	}
+
+	var req struct {
+		UserID uint `json:"user_id" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	// Verify group exists
+	var group database.Group
+	if err := h.db.First(&group, groupID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	// Verify user exists
+	var user database.User
+	if err := h.db.First(&user, req.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	userGroup := database.UserGroup{
+		UserID:  req.UserID,
+		GroupID: uint(groupID),
+	}
+
+	if err := h.db.Create(&userGroup).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "user already in group"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "user added to group"})
+}
+
+// RemoveUserFromGroup removes a user from a group
+func (h *AdminHandler) RemoveUserFromGroup(c *gin.Context) {
+	groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group id"})
+		return
+	}
+
+	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+
+	result := h.db.Where("group_id = ? AND user_id = ?", groupID, userID).Delete(&database.UserGroup{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not in group"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "user removed from group"})
+}
+
+// AddRouteToGroup adds a route to a group
+func (h *AdminHandler) AddRouteToGroup(c *gin.Context) {
+	groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group id"})
+		return
+	}
+
+	var req struct {
+		RouteID uint `json:"route_id" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	// Verify group exists
+	var group database.Group
+	if err := h.db.First(&group, groupID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	// Verify route exists
+	var route database.Route
+	if err := h.db.First(&route, req.RouteID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "route not found"})
+		return
+	}
+
+	routeGroup := database.RouteGroup{
+		RouteID: req.RouteID,
+		GroupID: uint(groupID),
+	}
+
+	if err := h.db.Create(&routeGroup).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "route already in group"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "route added to group"})
+}
+
+// RemoveRouteFromGroup removes a route from a group
+func (h *AdminHandler) RemoveRouteFromGroup(c *gin.Context) {
+	groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group id"})
+		return
+	}
+
+	routeID, err := strconv.ParseUint(c.Param("route_id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid route id"})
+		return
+	}
+
+	result := h.db.Where("group_id = ? AND route_id = ?", groupID, routeID).Delete(&database.RouteGroup{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "route not in group"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "route removed from group"})
+}
+
+// GetRoutesForUser returns routes that should be pushed to a specific user based on their groups
+func (h *AdminHandler) GetRoutesForUser(userID uint) ([]string, error) {
+	// Get user's groups
+	var userGroups []database.UserGroup
+	if err := h.db.Where("user_id = ?", userID).Find(&userGroups).Error; err != nil {
+		return nil, err
+	}
+
+	// If user has no groups, return empty (or you could return global routes)
+	if len(userGroups) == 0 {
+		// Return routes that are not assigned to any group (global routes)
+		return h.getGlobalRoutes()
+	}
+
+	// Get group IDs
+	groupIDs := make([]uint, len(userGroups))
+	for i, ug := range userGroups {
+		groupIDs[i] = ug.GroupID
+	}
+
+	// Get route IDs for these groups
+	var routeGroups []database.RouteGroup
+	if err := h.db.Where("group_id IN ?", groupIDs).Find(&routeGroups).Error; err != nil {
+		return nil, err
+	}
+
+	// Get unique route IDs
+	routeIDSet := make(map[uint]bool)
+	for _, rg := range routeGroups {
+		routeIDSet[rg.RouteID] = true
+	}
+
+	if len(routeIDSet) == 0 {
+		// User is in groups but no routes assigned, return global routes
+		return h.getGlobalRoutes()
+	}
+
+	routeIDs := make([]uint, 0, len(routeIDSet))
+	for id := range routeIDSet {
+		routeIDs = append(routeIDs, id)
+	}
+
+	// Get routes
+	var routes []database.Route
+	if err := h.db.Where("id IN ? AND enabled = ? AND push_to_client = ?", routeIDs, true, true).Find(&routes).Error; err != nil {
+		return nil, err
+	}
+
+	cidrs := make([]string, len(routes))
+	for i, r := range routes {
+		cidrs[i] = r.CIDR
+	}
+
+	return cidrs, nil
+}
+
+// getGlobalRoutes returns routes not assigned to any group
+func (h *AdminHandler) getGlobalRoutes() ([]string, error) {
+	// Get all route IDs that are assigned to groups
+	var routeGroups []database.RouteGroup
+	h.db.Find(&routeGroups)
+
+	assignedRouteIDs := make([]uint, len(routeGroups))
+	for i, rg := range routeGroups {
+		assignedRouteIDs[i] = rg.RouteID
+	}
+
+	var routes []database.Route
+	query := h.db.Where("enabled = ? AND push_to_client = ?", true, true)
+	if len(assignedRouteIDs) > 0 {
+		query = query.Where("id NOT IN ?", assignedRouteIDs)
+	}
+	if err := query.Find(&routes).Error; err != nil {
+		return nil, err
+	}
+
+	cidrs := make([]string, len(routes))
+	for i, r := range routes {
+		cidrs[i] = r.CIDR
+	}
+
+	return cidrs, nil
+}

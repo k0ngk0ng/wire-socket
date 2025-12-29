@@ -64,6 +64,9 @@ func main() {
 	// NAT commands
 	case "nat":
 		handleNATCommand(db, config, args)
+	// Group commands
+	case "group", "groups":
+		handleGroupCommand(db, args)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -134,6 +137,23 @@ Commands:
   nat delete <id>               Delete NAT rule
   nat apply                     Apply NAT rules to iptables
 
+  group list                    List all groups
+  group create <name> [options] Create a new group
+    --description=<text>        Group description
+  group get <id>                Get group details (with users/routes)
+  group update <id> [options]   Update group
+    --name=<name>               Set name
+    --description=<text>        Set description
+  group delete <id>             Delete a group
+  group add-user <group_id> <user_id>
+                                Add user to group
+  group remove-user <group_id> <user_id>
+                                Remove user from group
+  group add-route <group_id> <route_id>
+                                Add route to group
+  group remove-route <group_id> <route_id>
+                                Remove route from group
+
 Environment:
   WSCTL_CONFIG                  Config file path (default: config.yaml)
 
@@ -142,7 +162,10 @@ Examples:
   wsctl user create alice alice@example.com secret123 --admin
   wsctl route create 192.168.1.0/24 "Internal network"
   wsctl nat create masquerade --interface=eth0
-  wsctl nat apply`)
+  wsctl nat apply
+  wsctl group create developers --description="Dev team"
+  wsctl group add-user 1 2
+  wsctl group add-route 1 3`)
 }
 
 // ============ User Commands ============
@@ -734,4 +757,346 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// ============ Group Commands ============
+
+func handleGroupCommand(db *database.DB, args []string) {
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+
+	switch args[0] {
+	case "list", "ls":
+		listGroups(db)
+	case "get":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group get <id>")
+			os.Exit(1)
+		}
+		getGroup(db, args[1])
+	case "create", "add":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group create <name> [--description=<text>]")
+			os.Exit(1)
+		}
+		createGroup(db, args[1], args[2:])
+	case "update", "edit":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group update <id> [options]")
+			os.Exit(1)
+		}
+		updateGroup(db, args[1], args[2:])
+	case "delete", "rm":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group delete <id>")
+			os.Exit(1)
+		}
+		deleteGroup(db, args[1])
+	case "add-user":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group add-user <group_id> <user_id>")
+			os.Exit(1)
+		}
+		addUserToGroup(db, args[1], args[2])
+	case "remove-user":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group remove-user <group_id> <user_id>")
+			os.Exit(1)
+		}
+		removeUserFromGroup(db, args[1], args[2])
+	case "add-route":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group add-route <group_id> <route_id>")
+			os.Exit(1)
+		}
+		addRouteToGroup(db, args[1], args[2])
+	case "remove-route":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl group remove-route <group_id> <route_id>")
+			os.Exit(1)
+		}
+		removeRouteFromGroup(db, args[1], args[2])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown group subcommand: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func listGroups(db *database.DB) {
+	var groups []database.Group
+	if err := db.Find(&groups).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(groups) == 0 {
+		fmt.Println("No groups configured")
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tNAME\tDESCRIPTION\tUSERS\tROUTES")
+	for _, g := range groups {
+		// Count users in group
+		var userCount int64
+		db.Model(&database.UserGroup{}).Where("group_id = ?", g.ID).Count(&userCount)
+		// Count routes in group
+		var routeCount int64
+		db.Model(&database.RouteGroup{}).Where("group_id = ?", g.ID).Count(&routeCount)
+
+		fmt.Fprintf(w, "%d\t%s\t%s\t%d\t%d\n", g.ID, g.Name, g.Description, userCount, routeCount)
+	}
+	w.Flush()
+}
+
+func getGroup(db *database.DB, idStr string) {
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid ID: %s\n", idStr)
+		os.Exit(1)
+	}
+
+	var group database.Group
+	if err := db.First(&group, id).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Group not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("ID:          %d\n", group.ID)
+	fmt.Printf("Name:        %s\n", group.Name)
+	fmt.Printf("Description: %s\n", group.Description)
+	fmt.Printf("Created:     %s\n", group.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Updated:     %s\n", group.UpdatedAt.Format("2006-01-02 15:04:05"))
+
+	// List users in group
+	var userGroups []database.UserGroup
+	db.Where("group_id = ?", group.ID).Preload("User").Find(&userGroups)
+	if len(userGroups) > 0 {
+		fmt.Printf("\nUsers (%d):\n", len(userGroups))
+		for _, ug := range userGroups {
+			fmt.Printf("  - [%d] %s (%s)\n", ug.User.ID, ug.User.Username, ug.User.Email)
+		}
+	} else {
+		fmt.Printf("\nUsers: (none)\n")
+	}
+
+	// List routes in group
+	var routeGroups []database.RouteGroup
+	db.Where("group_id = ?", group.ID).Preload("Route").Find(&routeGroups)
+	if len(routeGroups) > 0 {
+		fmt.Printf("\nRoutes (%d):\n", len(routeGroups))
+		for _, rg := range routeGroups {
+			comment := rg.Route.Comment
+			if comment == "" {
+				comment = "-"
+			}
+			fmt.Printf("  - [%d] %s (%s)\n", rg.Route.ID, rg.Route.CIDR, comment)
+		}
+	} else {
+		fmt.Printf("\nRoutes: (none)\n")
+	}
+}
+
+func createGroup(db *database.DB, name string, opts []string) {
+	group := database.Group{
+		Name: name,
+	}
+
+	for _, opt := range opts {
+		if strings.HasPrefix(opt, "--description=") {
+			group.Description = strings.TrimPrefix(opt, "--description=")
+		}
+	}
+
+	if err := db.Create(&group).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating group: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Group created: ID=%d, Name=%s\n", group.ID, group.Name)
+}
+
+func updateGroup(db *database.DB, idStr string, opts []string) {
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid ID: %s\n", idStr)
+		os.Exit(1)
+	}
+
+	var group database.Group
+	if err := db.First(&group, id).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Group not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, opt := range opts {
+		if strings.HasPrefix(opt, "--name=") {
+			group.Name = strings.TrimPrefix(opt, "--name=")
+		} else if strings.HasPrefix(opt, "--description=") {
+			group.Description = strings.TrimPrefix(opt, "--description=")
+		}
+	}
+
+	if err := db.Save(&group).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error updating group: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Group updated: ID=%d\n", group.ID)
+}
+
+func deleteGroup(db *database.DB, idStr string) {
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid ID: %s\n", idStr)
+		os.Exit(1)
+	}
+
+	var group database.Group
+	if err := db.First(&group, id).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Group not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Delete group memberships
+	db.Where("group_id = ?", group.ID).Delete(&database.UserGroup{})
+	db.Where("group_id = ?", group.ID).Delete(&database.RouteGroup{})
+
+	if err := db.Delete(&group).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error deleting group: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Group deleted: ID=%d\n", group.ID)
+}
+
+func addUserToGroup(db *database.DB, groupIDStr, userIDStr string) {
+	groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid group ID: %s\n", groupIDStr)
+		os.Exit(1)
+	}
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid user ID: %s\n", userIDStr)
+		os.Exit(1)
+	}
+
+	// Verify group exists
+	var group database.Group
+	if err := db.First(&group, groupID).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Group not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Verify user exists
+	var user database.User
+	if err := db.First(&user, userID).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "User not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	userGroup := database.UserGroup{
+		UserID:  uint(userID),
+		GroupID: uint(groupID),
+	}
+
+	if err := db.Create(&userGroup).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error adding user to group: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("User %s added to group %s\n", user.Username, group.Name)
+}
+
+func removeUserFromGroup(db *database.DB, groupIDStr, userIDStr string) {
+	groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid group ID: %s\n", groupIDStr)
+		os.Exit(1)
+	}
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid user ID: %s\n", userIDStr)
+		os.Exit(1)
+	}
+
+	result := db.Where("group_id = ? AND user_id = ?", groupID, userID).Delete(&database.UserGroup{})
+	if result.Error != nil {
+		fmt.Fprintf(os.Stderr, "Error removing user from group: %v\n", result.Error)
+		os.Exit(1)
+	}
+
+	if result.RowsAffected == 0 {
+		fmt.Fprintln(os.Stderr, "User is not in this group")
+		os.Exit(1)
+	}
+
+	fmt.Printf("User removed from group\n")
+}
+
+func addRouteToGroup(db *database.DB, groupIDStr, routeIDStr string) {
+	groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid group ID: %s\n", groupIDStr)
+		os.Exit(1)
+	}
+	routeID, err := strconv.ParseUint(routeIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid route ID: %s\n", routeIDStr)
+		os.Exit(1)
+	}
+
+	// Verify group exists
+	var group database.Group
+	if err := db.First(&group, groupID).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Group not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Verify route exists
+	var route database.Route
+	if err := db.First(&route, routeID).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Route not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	routeGroup := database.RouteGroup{
+		RouteID: uint(routeID),
+		GroupID: uint(groupID),
+	}
+
+	if err := db.Create(&routeGroup).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error adding route to group: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Route %s added to group %s\n", route.CIDR, group.Name)
+}
+
+func removeRouteFromGroup(db *database.DB, groupIDStr, routeIDStr string) {
+	groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid group ID: %s\n", groupIDStr)
+		os.Exit(1)
+	}
+	routeID, err := strconv.ParseUint(routeIDStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid route ID: %s\n", routeIDStr)
+		os.Exit(1)
+	}
+
+	result := db.Where("group_id = ? AND route_id = ?", groupID, routeID).Delete(&database.RouteGroup{})
+	if result.Error != nil {
+		fmt.Fprintf(os.Stderr, "Error removing route from group: %v\n", result.Error)
+		os.Exit(1)
+	}
+
+	if result.RowsAffected == 0 {
+		fmt.Fprintln(os.Stderr, "Route is not in this group")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Route removed from group\n")
 }

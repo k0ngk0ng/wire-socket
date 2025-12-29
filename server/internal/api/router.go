@@ -83,6 +83,19 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 			admin.PUT("/nat/:id", r.adminHandler.UpdateNATRule)
 			admin.DELETE("/nat/:id", r.adminHandler.DeleteNATRule)
 			admin.POST("/nat/apply", r.adminHandler.ApplyNATRules)
+
+			// Group management
+			admin.GET("/groups", r.adminHandler.ListGroups)
+			admin.POST("/groups", r.adminHandler.CreateGroup)
+			admin.GET("/groups/:id", r.adminHandler.GetGroup)
+			admin.PUT("/groups/:id", r.adminHandler.UpdateGroup)
+			admin.DELETE("/groups/:id", r.adminHandler.DeleteGroup)
+
+			// Group membership management
+			admin.POST("/groups/:id/users", r.adminHandler.AddUserToGroup)
+			admin.DELETE("/groups/:id/users/:user_id", r.adminHandler.RemoveUserFromGroup)
+			admin.POST("/groups/:id/routes", r.adminHandler.AddRouteToGroup)
+			admin.DELETE("/groups/:id/routes/:route_id", r.adminHandler.RemoveRouteFromGroup)
 		}
 	}
 }
@@ -111,9 +124,9 @@ func (r *Router) GetConfig(c *gin.Context) {
 		return
 	}
 
-	// Build routes: subnet + additional routes from database
+	// Build routes: subnet + user-specific routes based on groups
 	allRoutes := []string{r.subnet}
-	dbRoutes, err := r.adminHandler.GetEnabledRoutes()
+	dbRoutes, err := r.adminHandler.GetRoutesForUser(userID.(uint))
 	if err == nil {
 		allRoutes = append(allRoutes, dbRoutes...)
 	}

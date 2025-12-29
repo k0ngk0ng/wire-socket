@@ -108,6 +108,37 @@ type NATRule struct {
 	MSS int `json:"mss,omitempty"` // MSS value (e.g., 1360)
 }
 
+// Group represents a user group for route assignment
+type Group struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Name        string    `gorm:"unique;not null" json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// UserGroup is a many-to-many join table between users and groups
+type UserGroup struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;uniqueIndex:idx_user_group" json:"user_id"`
+	GroupID   uint      `gorm:"not null;uniqueIndex:idx_user_group" json:"group_id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	User  User  `gorm:"foreignKey:UserID" json:"-"`
+	Group Group `gorm:"foreignKey:GroupID" json:"-"`
+}
+
+// RouteGroup is a many-to-many join table between routes and groups
+type RouteGroup struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	RouteID   uint      `gorm:"not null;uniqueIndex:idx_route_group" json:"route_id"`
+	GroupID   uint      `gorm:"not null;uniqueIndex:idx_route_group" json:"group_id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	Route Route `gorm:"foreignKey:RouteID" json:"-"`
+	Group Group `gorm:"foreignKey:GroupID" json:"-"`
+}
+
 // DB holds the database connection
 type DB struct {
 	*gorm.DB
@@ -121,7 +152,7 @@ func NewDB(dbPath string) (*DB, error) {
 	}
 
 	// Auto-migrate schemas
-	if err := db.AutoMigrate(&User{}, &Server{}, &AllocatedIP{}, &Session{}, &Route{}, &NATRule{}); err != nil {
+	if err := db.AutoMigrate(&User{}, &Server{}, &AllocatedIP{}, &Session{}, &Route{}, &NATRule{}, &Group{}, &UserGroup{}, &RouteGroup{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
