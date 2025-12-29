@@ -389,7 +389,11 @@ func createRoute(db *database.DB, cidr string, opts []string) {
 		} else if strings.HasPrefix(opt, "--comment=") {
 			route.Comment = strings.TrimPrefix(opt, "--comment=")
 		} else if strings.HasPrefix(opt, "--push-to-client=") {
-			route.PushToClient = strings.TrimPrefix(opt, "--push-to-client=") == "true"
+			value := strings.TrimPrefix(opt, "--push-to-client=")
+			route.PushToClient = value == "true"
+		} else if strings.HasPrefix(opt, "--enabled=") {
+			value := strings.TrimPrefix(opt, "--enabled=")
+			route.Enabled = value == "true"
 		} else if !strings.HasPrefix(opt, "--") {
 			// Legacy: treat non-option argument as comment
 			route.Comment = opt
@@ -401,7 +405,7 @@ func createRoute(db *database.DB, cidr string, opts []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Route created: ID=%d, CIDR=%s\n", route.ID, route.CIDR)
+	fmt.Printf("Route created: ID=%d, CIDR=%s, PushToClient=%v\n", route.ID, route.CIDR, route.PushToClient)
 }
 
 func updateRoute(db *database.DB, idStr string, opts []string) {
