@@ -290,6 +290,159 @@
       cursor: pointer;
       accent-color: #667eea;
     }
+
+    /* Settings button */
+    .settings-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      opacity: 0.6;
+      transition: opacity 0.3s;
+      padding: 5px;
+    }
+
+    .settings-btn:hover {
+      opacity: 1;
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 16px;
+      width: 90%;
+      max-width: 450px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+      color: #333;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #666;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: #333;
+    }
+
+    .modal-body {
+      padding: 20px;
+    }
+
+    .modal-section {
+      margin-bottom: 25px;
+    }
+
+    .modal-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .modal-section h3 {
+      font-size: 14px;
+      color: #666;
+      margin: 0 0 15px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .route-list {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+    }
+
+    .route-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .route-item:last-child {
+      border-bottom: none;
+    }
+
+    .route-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin-right: 10px;
+      accent-color: #667eea;
+    }
+
+    .route-item label {
+      font-size: 13px;
+      color: #333;
+      font-family: monospace;
+      margin: 0;
+    }
+
+    .route-item.excluded label {
+      color: #999;
+      text-decoration: line-through;
+    }
+
+    .success-message {
+      background: #d4edda;
+      color: #155724;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 14px;
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn-small {
+      padding: 10px 16px;
+      font-size: 14px;
+    }
+
+    .empty-state {
+      padding: 20px;
+      text-align: center;
+      color: #999;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -302,7 +455,10 @@
         </h1>
         <p class="vpn-status-text" id="statusText"></p>
       </div>
-      <div class="backend-indicator" id="backendIndicator" title="Backend service status"></div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button class="settings-btn" id="settingsBtn" onclick="openSettings()" title="Settings">⚙️</button>
+        <div class="backend-indicator" id="backendIndicator" title="Backend service status"></div>
+      </div>
     </div>
 
     <!-- Loading View -->
@@ -374,6 +530,50 @@
       <button class="btn btn-danger" onclick="disconnect()" style="margin-top: 20px;">
         Disconnect
       </button>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay hidden" onclick="closeSettingsOnOverlay(event)">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="modal-close" onclick="closeSettings()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <!-- Route Settings Section -->
+          <div class="modal-section">
+            <h3>Route Settings</h3>
+            <p style="font-size: 13px; color: #666; margin: 0 0 10px 0;">
+              Uncheck routes to exclude them from VPN tunnel. Changes take effect on next connection.
+            </p>
+            <div id="routeList" class="route-list">
+              <div class="empty-state">Connect to a server to see available routes</div>
+            </div>
+            <div id="routeMessage" class="hidden"></div>
+          </div>
+
+          <!-- Change Password Section -->
+          <div class="modal-section">
+            <h3>Change Password</h3>
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label for="currentPassword" style="margin-bottom: 5px;">Current Password</label>
+              <input type="password" id="currentPassword" placeholder="Enter current password">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label for="newPassword" style="margin-bottom: 5px;">New Password</label>
+              <input type="password" id="newPassword" placeholder="At least 8 characters">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label for="confirmPassword" style="margin-bottom: 5px;">Confirm New Password</label>
+              <input type="password" id="confirmPassword" placeholder="Confirm new password">
+            </div>
+            <button class="btn btn-primary btn-small" onclick="changePassword()" id="changePasswordBtn">
+              Change Password
+            </button>
+            <div id="passwordMessage" class="hidden"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -565,6 +765,11 @@
         loginForm.classList.add('hidden');
         connectedView.classList.remove('hidden');
 
+        // Save token for password change
+        if (data.token) {
+          localStorage.setItem('wiresocket_token', data.token);
+        }
+
         document.getElementById('connectedServer').textContent = data.server_name || 'Unknown';
         document.getElementById('assignedIP').textContent = data.assigned_ip || 'Unknown';
 
@@ -644,6 +849,176 @@
         }
       }
     });
+
+    // Settings modal functions
+    let currentRoutes = [];
+    let excludedRoutes = [];
+    let currentToken = null;
+
+    function openSettings() {
+      document.getElementById('settingsModal').classList.remove('hidden');
+      loadRouteSettings();
+      // Clear password fields
+      document.getElementById('currentPassword').value = '';
+      document.getElementById('newPassword').value = '';
+      document.getElementById('confirmPassword').value = '';
+      hidePasswordMessage();
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function closeSettingsOnOverlay(event) {
+      if (event.target.id === 'settingsModal') {
+        closeSettings();
+      }
+    }
+
+    async function loadRouteSettings() {
+      try {
+        const result = await window.electronAPI.getRouteSettings();
+        if (result.success) {
+          currentRoutes = result.data.available_routes || [];
+          excludedRoutes = result.data.excluded_routes || [];
+          renderRouteList();
+        }
+      } catch (e) {
+        console.error('Failed to load route settings:', e);
+      }
+    }
+
+    function renderRouteList() {
+      const routeList = document.getElementById('routeList');
+
+      if (currentRoutes.length === 0) {
+        routeList.innerHTML = '<div class="empty-state">Connect to a server to see available routes</div>';
+        return;
+      }
+
+      let html = '';
+      currentRoutes.forEach((route, index) => {
+        const isExcluded = excludedRoutes.includes(route);
+        const itemClass = isExcluded ? 'route-item excluded' : 'route-item';
+        html += `
+          <div class="${itemClass}">
+            <input type="checkbox" id="route-${index}" ${!isExcluded ? 'checked' : ''} onchange="toggleRoute('${route}', this.checked)">
+            <label for="route-${index}">${route}</label>
+          </div>
+        `;
+      });
+
+      routeList.innerHTML = html;
+    }
+
+    async function toggleRoute(route, isEnabled) {
+      if (isEnabled) {
+        excludedRoutes = excludedRoutes.filter(r => r !== route);
+      } else {
+        if (!excludedRoutes.includes(route)) {
+          excludedRoutes.push(route);
+        }
+      }
+
+      try {
+        const result = await window.electronAPI.updateRouteSettings(excludedRoutes);
+        if (result.success) {
+          showRouteMessage('Route settings saved. Changes will apply on next connection.', 'success');
+          renderRouteList();
+        } else {
+          showRouteMessage('Failed to save route settings: ' + result.error, 'error');
+        }
+      } catch (e) {
+        showRouteMessage('Failed to save route settings', 'error');
+      }
+    }
+
+    function showRouteMessage(message, type) {
+      const el = document.getElementById('routeMessage');
+      el.textContent = message;
+      el.className = type === 'success' ? 'success-message' : 'error-message';
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    async function changePassword() {
+      const currentPassword = document.getElementById('currentPassword').value;
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      const btn = document.getElementById('changePasswordBtn');
+
+      // Validation
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        showPasswordMessage('Please fill in all password fields', 'error');
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        showPasswordMessage('New password must be at least 8 characters', 'error');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        showPasswordMessage('New passwords do not match', 'error');
+        return;
+      }
+
+      // Get saved credentials
+      const serverAddress = localStorage.getItem('wiresocket_server');
+      const token = localStorage.getItem('wiresocket_token');
+
+      if (!serverAddress) {
+        showPasswordMessage('Server address not found. Please connect first.', 'error');
+        return;
+      }
+
+      if (!token) {
+        showPasswordMessage('Not authenticated. Please reconnect to the server.', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Changing...';
+
+      try {
+        const result = await window.electronAPI.changePassword({
+          server_address: serverAddress,
+          token: token,
+          current_password: currentPassword,
+          new_password: newPassword
+        });
+
+        if (result.success) {
+          showPasswordMessage('Password changed successfully!', 'success');
+          // Update saved password if remember is enabled
+          if (localStorage.getItem('wiresocket_remember') === 'true') {
+            localStorage.setItem('wiresocket_password', newPassword);
+          }
+          // Clear fields
+          document.getElementById('currentPassword').value = '';
+          document.getElementById('newPassword').value = '';
+          document.getElementById('confirmPassword').value = '';
+        } else {
+          showPasswordMessage(result.error || 'Failed to change password', 'error');
+        }
+      } catch (e) {
+        showPasswordMessage('Failed to change password: ' + e.message, 'error');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Change Password';
+    }
+
+    function showPasswordMessage(message, type) {
+      const el = document.getElementById('passwordMessage');
+      el.textContent = message;
+      el.className = type === 'success' ? 'success-message' : 'error-message';
+      el.classList.remove('hidden');
+    }
+
+    function hidePasswordMessage() {
+      document.getElementById('passwordMessage').classList.add('hidden');
+    }
 
     // Start waiting for backend on page load
     waitForBackend();

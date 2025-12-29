@@ -54,6 +54,7 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		protected.Use(r.authHandler.AuthMiddleware())
 		{
 			protected.POST("/auth/refresh", r.authHandler.RefreshToken)
+			protected.POST("/auth/change-password", r.authHandler.ChangePassword)
 			protected.GET("/config", r.GetConfig)
 			protected.GET("/servers", r.ListServers)
 			protected.GET("/status", r.GetStatus)

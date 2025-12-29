@@ -640,6 +640,46 @@ ipcMain.handle('api:addServer', async (event, server) => {
   }
 });
 
+// Route settings handlers
+ipcMain.handle('api:getRouteSettings', async () => {
+  try {
+    const response = await axios.get(`${getApiBase()}/api/routes/settings`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
+ipcMain.handle('api:updateRouteSettings', async (event, excludedRoutes) => {
+  try {
+    const response = await axios.put(`${getApiBase()}/api/routes/settings`, {
+      excluded_routes: excludedRoutes
+    });
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
+// Password change handler
+ipcMain.handle('api:changePassword', async (event, data) => {
+  try {
+    const response = await axios.post(`${getApiBase()}/api/change-password`, data);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
 // Update tray menu when connection status changes
 ipcMain.handle('tray:updateStatus', async (event, isConnected) => {
   updateTrayMenu(isConnected);

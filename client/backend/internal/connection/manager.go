@@ -36,6 +36,11 @@ type ServerConfig struct {
 	LastUsed    time.Time `json:"last_used,omitempty"`
 }
 
+// RouteSettings stores user's route preferences
+type RouteSettings struct {
+	ExcludedRoutes []string `json:"excluded_routes"` // CIDRs to exclude
+}
+
 // ConnectRequest represents connection parameters
 type ConnectRequest struct {
 	ServerAddress string `json:"server_address"` // API address (e.g., "192.168.1.100:8080")
@@ -46,32 +51,39 @@ type ConnectRequest struct {
 
 // Status represents the current connection status
 type Status struct {
-	State         State     `json:"state"`
-	ServerName    string    `json:"server_name,omitempty"`
-	AssignedIP    string    `json:"assigned_ip,omitempty"`
-	PublicIP      string    `json:"public_ip,omitempty"`
+	State          State     `json:"state"`
+	ServerName     string    `json:"server_name,omitempty"`
+	AssignedIP     string    `json:"assigned_ip,omitempty"`
+	PublicIP       string    `json:"public_ip,omitempty"`
 	ConnectedSince time.Time `json:"connected_since,omitempty"`
-	RxBytes       uint64    `json:"rx_bytes"`
-	TxBytes       uint64    `json:"tx_bytes"`
-	RxSpeed       uint64    `json:"rx_speed"` // bytes/sec
-	TxSpeed       uint64    `json:"tx_speed"`
-	Latency       int       `json:"latency"` // ms
-	Error         string    `json:"error,omitempty"`
+	RxBytes        uint64    `json:"rx_bytes"`
+	TxBytes        uint64    `json:"tx_bytes"`
+	RxSpeed        uint64    `json:"rx_speed"` // bytes/sec
+	TxSpeed        uint64    `json:"tx_speed"`
+	Latency        int       `json:"latency"` // ms
+	Error          string    `json:"error,omitempty"`
+	AvailableRoutes []string `json:"available_routes,omitempty"` // Routes received from server
+	ActiveRoutes    []string `json:"active_routes,omitempty"`    // Routes actually applied
+	Token           string   `json:"token,omitempty"`            // Auth token for API calls
 }
 
 // Manager manages VPN connections
 type Manager struct {
-	mu            sync.RWMutex
-	state         State
-	currentServer *ServerConfig
-	wgInterface   *wireguard.Interface
-	wstunnelClient *wstunnel.Client
-	token         string
-	assignedIP    string
-	connectedAt   time.Time
-	lastError     error
-	servers       []ServerConfig
-	configPath    string
+	mu              sync.RWMutex
+	state           State
+	currentServer   *ServerConfig
+	wgInterface     *wireguard.Interface
+	wstunnelClient  *wstunnel.Client
+	token           string
+	assignedIP      string
+	connectedAt     time.Time
+	lastError       error
+	servers         []ServerConfig
+	configPath      string
+	routeSettings   RouteSettings
+	routeConfigPath string
+	availableRoutes []string // Routes from server
+	activeRoutes    []string // Routes actually applied
 }
 
 // NewManager creates a new connection manager
@@ -89,9 +101,12 @@ func NewManager() (*Manager, error) {
 
 	configPath := filepath.Join(configDir, "servers.json")
 
+	routeConfigPath := filepath.Join(configDir, "routes.json")
+
 	m := &Manager{
-		state:      StateDisconnected,
-		configPath: configPath,
+		state:           StateDisconnected,
+		configPath:      configPath,
+		routeConfigPath: routeConfigPath,
 	}
 
 	// Load saved servers
@@ -99,6 +114,14 @@ func NewManager() (*Manager, error) {
 		// It's okay if file doesn't exist yet
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("failed to load servers: %w", err)
+		}
+	}
+
+	// Load route settings
+	if err := m.loadRouteSettings(); err != nil {
+		// It's okay if file doesn't exist yet
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to load route settings: %w", err)
 		}
 	}
 
@@ -172,11 +195,25 @@ func (m *Manager) doConnect(req ConnectRequest) {
 	// Set endpoint to localhost (wstunnel)
 	wgConfig.Peer.Endpoint = "127.0.0.1:51820"
 
-	// Use routes from server if provided, otherwise use AllowedIPs
-	if len(routes) > 0 {
-		wgConfig.Peer.AllowedIPs = strings.Join(routes, ",")
-		fmt.Printf("Using routes from server: %v\n", routes)
+	// Store available routes from server
+	m.mu.Lock()
+	m.availableRoutes = routes
+	m.mu.Unlock()
+
+	// Filter routes based on user preferences
+	activeRoutes := m.filterRoutes(routes)
+
+	// Use filtered routes if available, otherwise use default AllowedIPs
+	if len(activeRoutes) > 0 {
+		wgConfig.Peer.AllowedIPs = strings.Join(activeRoutes, ",")
+		fmt.Printf("Available routes from server: %v\n", routes)
+		fmt.Printf("Active routes (after filtering): %v\n", activeRoutes)
 	}
+
+	// Store active routes
+	m.mu.Lock()
+	m.activeRoutes = activeRoutes
+	m.mu.Unlock()
 
 	if err := wgInterface.Configure(wgConfig); err != nil {
 		wstunnelClient.Stop()
@@ -250,6 +287,13 @@ func (m *Manager) GetStatus() Status {
 	if m.state == StateConnected {
 		status.AssignedIP = m.assignedIP
 		status.ConnectedSince = m.connectedAt
+		status.Token = m.token
+
+		// Include route information
+		status.AvailableRoutes = make([]string, len(m.availableRoutes))
+		copy(status.AvailableRoutes, m.availableRoutes)
+		status.ActiveRoutes = make([]string, len(m.activeRoutes))
+		copy(status.ActiveRoutes, m.activeRoutes)
 
 		// Get traffic stats from WireGuard
 		if m.wgInterface != nil {
@@ -521,4 +565,152 @@ func convertToWebSocketURL(rawURL string) (string, error) {
 	}
 
 	return parsed.String(), nil
+}
+
+// Route settings management
+
+// loadRouteSettings loads route settings from file
+func (m *Manager) loadRouteSettings() error {
+	data, err := os.ReadFile(m.routeConfigPath)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(data, &m.routeSettings)
+}
+
+// saveRouteSettings saves route settings to file
+func (m *Manager) saveRouteSettings() error {
+	m.mu.RLock()
+	data, err := json.Marshal(m.routeSettings)
+	m.mu.RUnlock()
+
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(m.routeConfigPath, data, 0600)
+}
+
+// GetRouteSettings returns the current route settings
+func (m *Manager) GetRouteSettings() RouteSettings {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Return a copy
+	excludedCopy := make([]string, len(m.routeSettings.ExcludedRoutes))
+	copy(excludedCopy, m.routeSettings.ExcludedRoutes)
+
+	return RouteSettings{
+		ExcludedRoutes: excludedCopy,
+	}
+}
+
+// SetExcludedRoutes sets the list of routes to exclude
+func (m *Manager) SetExcludedRoutes(excluded []string) error {
+	m.mu.Lock()
+	m.routeSettings.ExcludedRoutes = excluded
+	m.mu.Unlock()
+
+	return m.saveRouteSettings()
+}
+
+// GetAvailableRoutes returns routes received from the server
+func (m *Manager) GetAvailableRoutes() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]string, len(m.availableRoutes))
+	copy(result, m.availableRoutes)
+	return result
+}
+
+// GetActiveRoutes returns routes actually applied
+func (m *Manager) GetActiveRoutes() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]string, len(m.activeRoutes))
+	copy(result, m.activeRoutes)
+	return result
+}
+
+// filterRoutes filters out excluded routes from the list
+func (m *Manager) filterRoutes(routes []string) []string {
+	m.mu.RLock()
+	excluded := make(map[string]bool)
+	for _, r := range m.routeSettings.ExcludedRoutes {
+		excluded[r] = true
+	}
+	m.mu.RUnlock()
+
+	var result []string
+	for _, route := range routes {
+		if !excluded[route] {
+			result = append(result, route)
+		}
+	}
+	return result
+}
+
+// ChangePasswordRequest represents the change password request
+type ChangePasswordRequest struct {
+	ServerAddress   string `json:"server_address"`
+	Token           string `json:"token"`
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// ChangePassword sends password change request to the server
+func (m *Manager) ChangePassword(req ChangePasswordRequest) error {
+	// Build API URL
+	apiBase := normalizeServerURL(req.ServerAddress)
+	apiURL := apiBase + "/api/auth/change-password"
+
+	// Prepare request body
+	body := map[string]string{
+		"current_password": req.CurrentPassword,
+		"new_password":     req.NewPassword,
+	}
+
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create request
+	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+req.Token)
+
+	// Send request
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Parse response
+	var result struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if result.Error != "" {
+			return fmt.Errorf("%s", result.Error)
+		}
+		return fmt.Errorf("request failed with status: %d", resp.StatusCode)
+	}
+
+	return nil
 }

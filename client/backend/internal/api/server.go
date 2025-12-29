@@ -59,6 +59,13 @@ func (s *Server) setupRoutes() {
 		api.GET("/status", s.getStatus)
 		api.GET("/servers", s.getServers)
 		api.POST("/servers", s.addServer)
+
+		// Route management
+		api.GET("/routes/settings", s.getRouteSettings)
+		api.PUT("/routes/settings", s.updateRouteSettings)
+
+		// Password management
+		api.POST("/change-password", s.changePassword)
 	}
 }
 
@@ -141,5 +148,76 @@ func (s *Server) addServer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "server added successfully",
 		"server":  server,
+	})
+}
+
+func (s *Server) getRouteSettings(c *gin.Context) {
+	settings := s.connMgr.GetRouteSettings()
+	availableRoutes := s.connMgr.GetAvailableRoutes()
+	activeRoutes := s.connMgr.GetActiveRoutes()
+
+	c.JSON(http.StatusOK, gin.H{
+		"excluded_routes":  settings.ExcludedRoutes,
+		"available_routes": availableRoutes,
+		"active_routes":    activeRoutes,
+	})
+}
+
+func (s *Server) updateRouteSettings(c *gin.Context) {
+	var req struct {
+		ExcludedRoutes []string `json:"excluded_routes"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if err := s.connMgr.SetExcludedRoutes(req.ExcludedRoutes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "route settings updated",
+		"excluded_routes": req.ExcludedRoutes,
+	})
+}
+
+func (s *Server) changePassword(c *gin.Context) {
+	var req connection.ChangePasswordRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if req.ServerAddress == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "server_address is required"})
+		return
+	}
+
+	if req.Token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token is required"})
+		return
+	}
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current_password and new_password are required"})
+		return
+	}
+
+	if len(req.NewPassword) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "new password must be at least 8 characters"})
+		return
+	}
+
+	if err := s.connMgr.ChangePassword(req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "password changed successfully",
 	})
 }
