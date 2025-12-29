@@ -161,12 +161,14 @@ func (h *AdminHandler) ListRoutes(c *gin.Context) {
 // CreateRoute creates a new route
 func (h *AdminHandler) CreateRoute(c *gin.Context) {
 	var req struct {
-		CIDR         string `json:"cidr" binding:"required"`
-		Gateway      string `json:"gateway"`
-		Device       string `json:"device"`
-		Comment      string `json:"comment"`
-		Enabled      *bool  `json:"enabled"`
-		PushToClient *bool  `json:"push_to_client"`
+		CIDR          string `json:"cidr" binding:"required"`
+		Gateway       string `json:"gateway"`
+		Device        string `json:"device"`
+		Metric        int    `json:"metric"`
+		Comment       string `json:"comment"`
+		Enabled       *bool  `json:"enabled"`
+		PushToClient  *bool  `json:"push_to_client"`
+		ApplyOnServer *bool  `json:"apply_on_server"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -184,13 +186,20 @@ func (h *AdminHandler) CreateRoute(c *gin.Context) {
 		pushToClient = *req.PushToClient
 	}
 
+	applyOnServer := false
+	if req.ApplyOnServer != nil {
+		applyOnServer = *req.ApplyOnServer
+	}
+
 	dbRoute := database.Route{
-		CIDR:         req.CIDR,
-		Gateway:      req.Gateway,
-		Device:       req.Device,
-		Comment:      req.Comment,
-		Enabled:      enabled,
-		PushToClient: pushToClient,
+		CIDR:          req.CIDR,
+		Gateway:       req.Gateway,
+		Device:        req.Device,
+		Metric:        req.Metric,
+		Comment:       req.Comment,
+		Enabled:       enabled,
+		PushToClient:  pushToClient,
+		ApplyOnServer: applyOnServer,
 	}
 
 	if err := h.db.Create(&dbRoute).Error; err != nil {
@@ -216,12 +225,14 @@ func (h *AdminHandler) UpdateRoute(c *gin.Context) {
 	}
 
 	var req struct {
-		CIDR         string `json:"cidr"`
-		Gateway      string `json:"gateway"`
-		Device       string `json:"device"`
-		Comment      string `json:"comment"`
-		Enabled      *bool  `json:"enabled"`
-		PushToClient *bool  `json:"push_to_client"`
+		CIDR          string `json:"cidr"`
+		Gateway       string `json:"gateway"`
+		Device        string `json:"device"`
+		Metric        *int   `json:"metric"`
+		Comment       string `json:"comment"`
+		Enabled       *bool  `json:"enabled"`
+		PushToClient  *bool  `json:"push_to_client"`
+		ApplyOnServer *bool  `json:"apply_on_server"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -238,6 +249,9 @@ func (h *AdminHandler) UpdateRoute(c *gin.Context) {
 	if req.Device != "" {
 		dbRoute.Device = req.Device
 	}
+	if req.Metric != nil {
+		dbRoute.Metric = *req.Metric
+	}
 	if req.Comment != "" {
 		dbRoute.Comment = req.Comment
 	}
@@ -246,6 +260,9 @@ func (h *AdminHandler) UpdateRoute(c *gin.Context) {
 	}
 	if req.PushToClient != nil {
 		dbRoute.PushToClient = *req.PushToClient
+	}
+	if req.ApplyOnServer != nil {
+		dbRoute.ApplyOnServer = *req.ApplyOnServer
 	}
 
 	if err := h.db.Save(&dbRoute).Error; err != nil {

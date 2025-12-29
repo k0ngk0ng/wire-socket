@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
+	"wire-socket-server/internal/route"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
@@ -96,7 +97,8 @@ func printUsage() {
 Usage: wsctl <command> [subcommand] [options]
 
 Commands:
-  user list                     List all users
+  user list [--sort=<field>]    List all users
+    --sort=id|username|email|created_at  Sort by field (prefix with - for desc)
   user get <id>                 Get user details
   user create <username> <email> <password> [--admin]
                                 Create a new user
@@ -108,22 +110,29 @@ Commands:
     --admin=true|false          Set admin status
   user delete <id>              Delete a user
 
-  route list                    List all routes
+  route list [--sort=<field>]   List all routes
+    --sort=id|cidr|enabled|created_at    Sort by field (prefix with - for desc)
   route create <cidr> [options] Create a new route
-    --gateway=<ip>              Next hop gateway (optional)
-    --device=<dev>              Interface (optional, defaults to wg device)
+    --gateway=<ip>              Next hop gateway (for server-side routing)
+    --device=<dev>              Interface (defaults to wg device)
+    --metric=<num>              Route priority (lower = higher priority)
     --comment=<text>            Comment
     --push-to-client=true|false Push to VPN clients (default: true)
+    --apply-on-server=true|false Apply on server side (default: false)
   route update <id> [options]   Update route
     --cidr=<cidr>               Set CIDR
     --gateway=<ip>              Set gateway
     --device=<dev>              Set device
+    --metric=<num>              Set metric
     --comment=<text>            Set comment
     --enabled=true|false        Set enabled status
     --push-to-client=true|false Push to clients
+    --apply-on-server=true|false Apply on server
   route delete <id>             Delete a route
+  route apply                   Apply routes to server routing table
 
-  nat list                      List all NAT rules
+  nat list [--sort=<field>]     List all NAT rules
+    --sort=id|type|interface|enabled     Sort by field (prefix with - for desc)
   nat create <type> [options]   Create NAT rule
     For masquerade:
       nat create masquerade --interface=eth0
@@ -137,7 +146,8 @@ Commands:
   nat delete <id>               Delete NAT rule
   nat apply                     Apply NAT rules to iptables
 
-  group list                    List all groups
+  group list [--sort=<field>]   List all groups
+    --sort=id|name|created_at            Sort by field (prefix with - for desc)
   group create <name> [options] Create a new group
     --description=<text>        Group description
   group get <id>                Get group details (with users/routes)
@@ -177,7 +187,7 @@ func handleUserCommand(db *database.DB, args []string) {
 
 	switch args[0] {
 	case "list", "ls":
-		listUsers(db)
+		listUsers(db, args[1:])
 	case "get":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Usage: wsctl user get <id>")
@@ -209,9 +219,12 @@ func handleUserCommand(db *database.DB, args []string) {
 	}
 }
 
-func listUsers(db *database.DB) {
+func listUsers(db *database.DB, args []string) {
+	sortField, desc := parseSortOption(args, []string{"id", "username", "email", "created_at"})
+	orderClause := buildOrderClause(sortField, desc)
+
 	var users []database.User
-	if err := db.Find(&users).Error; err != nil {
+	if err := db.Order(orderClause).Find(&users).Error; err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -344,7 +357,7 @@ func handleRouteCommand(db *database.DB, config *Config, args []string) {
 
 	switch args[0] {
 	case "list", "ls":
-		listRoutes(db)
+		listRoutes(db, args[1:])
 	case "create", "add":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Usage: wsctl route create <cidr> [options]")
@@ -363,15 +376,20 @@ func handleRouteCommand(db *database.DB, config *Config, args []string) {
 			os.Exit(1)
 		}
 		deleteRoute(db, args[1])
+	case "apply":
+		applyRoutes(db, config)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown route subcommand: %s\n", args[0])
 		os.Exit(1)
 	}
 }
 
-func listRoutes(db *database.DB) {
+func listRoutes(db *database.DB, args []string) {
+	sortField, desc := parseSortOption(args, []string{"id", "cidr", "enabled", "created_at"})
+	orderClause := buildOrderClause(sortField, desc)
+
 	var routes []database.Route
-	if err := db.Find(&routes).Error; err != nil {
+	if err := db.Order(orderClause).Find(&routes).Error; err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -382,7 +400,7 @@ func listRoutes(db *database.DB) {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tCIDR\tGATEWAY\tDEVICE\tPUSH\tCOMMENT\tENABLED")
+	fmt.Fprintln(w, "ID\tCIDR\tGATEWAY\tDEVICE\tMETRIC\tPUSH\tSERVER\tCOMMENT\tENABLED")
 	for _, r := range routes {
 		gateway := r.Gateway
 		if gateway == "" {
@@ -392,16 +410,21 @@ func listRoutes(db *database.DB) {
 		if device == "" {
 			device = "(default)"
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%v\t%s\t%v\n", r.ID, r.CIDR, gateway, device, r.PushToClient, r.Comment, r.Enabled)
+		metric := "-"
+		if r.Metric > 0 {
+			metric = strconv.Itoa(r.Metric)
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%v\t%v\t%s\t%v\n", r.ID, r.CIDR, gateway, device, metric, r.PushToClient, r.ApplyOnServer, r.Comment, r.Enabled)
 	}
 	w.Flush()
 }
 
 func createRoute(db *database.DB, cidr string, opts []string) {
 	route := database.Route{
-		CIDR:         cidr,
-		Enabled:      true,
-		PushToClient: true,
+		CIDR:          cidr,
+		Enabled:       true,
+		PushToClient:  true,
+		ApplyOnServer: false,
 	}
 
 	for _, opt := range opts {
@@ -409,11 +432,17 @@ func createRoute(db *database.DB, cidr string, opts []string) {
 			route.Gateway = strings.TrimPrefix(opt, "--gateway=")
 		} else if strings.HasPrefix(opt, "--device=") {
 			route.Device = strings.TrimPrefix(opt, "--device=")
+		} else if strings.HasPrefix(opt, "--metric=") {
+			metric, _ := strconv.Atoi(strings.TrimPrefix(opt, "--metric="))
+			route.Metric = metric
 		} else if strings.HasPrefix(opt, "--comment=") {
 			route.Comment = strings.TrimPrefix(opt, "--comment=")
 		} else if strings.HasPrefix(opt, "--push-to-client=") {
 			value := strings.TrimPrefix(opt, "--push-to-client=")
 			route.PushToClient = value == "true"
+		} else if strings.HasPrefix(opt, "--apply-on-server=") {
+			value := strings.TrimPrefix(opt, "--apply-on-server=")
+			route.ApplyOnServer = value == "true"
 		} else if strings.HasPrefix(opt, "--enabled=") {
 			value := strings.TrimPrefix(opt, "--enabled=")
 			route.Enabled = value == "true"
@@ -428,7 +457,7 @@ func createRoute(db *database.DB, cidr string, opts []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Route created: ID=%d, CIDR=%s, PushToClient=%v\n", route.ID, route.CIDR, route.PushToClient)
+	fmt.Printf("Route created: ID=%d, CIDR=%s, PushToClient=%v, ApplyOnServer=%v\n", route.ID, route.CIDR, route.PushToClient, route.ApplyOnServer)
 }
 
 func updateRoute(db *database.DB, idStr string, opts []string) {
@@ -451,12 +480,17 @@ func updateRoute(db *database.DB, idStr string, opts []string) {
 			route.Gateway = strings.TrimPrefix(opt, "--gateway=")
 		} else if strings.HasPrefix(opt, "--device=") {
 			route.Device = strings.TrimPrefix(opt, "--device=")
+		} else if strings.HasPrefix(opt, "--metric=") {
+			metric, _ := strconv.Atoi(strings.TrimPrefix(opt, "--metric="))
+			route.Metric = metric
 		} else if strings.HasPrefix(opt, "--comment=") {
 			route.Comment = strings.TrimPrefix(opt, "--comment=")
 		} else if strings.HasPrefix(opt, "--enabled=") {
 			route.Enabled = strings.TrimPrefix(opt, "--enabled=") == "true"
 		} else if strings.HasPrefix(opt, "--push-to-client=") {
 			route.PushToClient = strings.TrimPrefix(opt, "--push-to-client=") == "true"
+		} else if strings.HasPrefix(opt, "--apply-on-server=") {
+			route.ApplyOnServer = strings.TrimPrefix(opt, "--apply-on-server=") == "true"
 		}
 	}
 
@@ -489,6 +523,44 @@ func deleteRoute(db *database.DB, idStr string) {
 	fmt.Printf("Route deleted: ID=%d\n", route.ID)
 }
 
+func applyRoutes(db *database.DB, config *Config) {
+	var dbRoutes []database.Route
+	if err := db.Where("enabled = ? AND apply_on_server = ?", true, true).Find(&dbRoutes).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading routes: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(dbRoutes) == 0 {
+		fmt.Println("No routes to apply (no enabled routes with apply_on_server=true)")
+		return
+	}
+
+	// Build route config
+	var routes []route.Route
+	for _, r := range dbRoutes {
+		routes = append(routes, route.Route{
+			CIDR:    r.CIDR,
+			Gateway: r.Gateway,
+			Device:  r.Device,
+			Metric:  r.Metric,
+		})
+	}
+
+	routeConfig := route.Config{
+		DefaultDevice: config.WireGuard.DeviceName,
+		Routes:        routes,
+	}
+
+	// Apply routes
+	manager := route.NewManager(routeConfig)
+	if err := manager.Apply(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error applying routes: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Routes applied: %d routes\n", len(routes))
+}
+
 // ============ NAT Commands ============
 
 func handleNATCommand(db *database.DB, config *Config, args []string) {
@@ -498,7 +570,7 @@ func handleNATCommand(db *database.DB, config *Config, args []string) {
 
 	switch args[0] {
 	case "list", "ls":
-		listNATRules(db)
+		listNATRules(db, args[1:])
 	case "create", "add":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Usage: wsctl nat create <type> [options]")
@@ -525,9 +597,12 @@ func handleNATCommand(db *database.DB, config *Config, args []string) {
 	}
 }
 
-func listNATRules(db *database.DB) {
+func listNATRules(db *database.DB, args []string) {
+	sortField, desc := parseSortOption(args, []string{"id", "type", "interface", "enabled"})
+	orderClause := buildOrderClause(sortField, desc)
+
 	var rules []database.NATRule
-	if err := db.Find(&rules).Error; err != nil {
+	if err := db.Order(orderClause).Find(&rules).Error; err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -759,6 +834,38 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+// parseSortOption extracts sort field from args and returns (field, isDesc, validFields)
+// Returns empty string if no sort option found
+func parseSortOption(args []string, validFields []string) (string, bool) {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--sort=") {
+			field := strings.TrimPrefix(arg, "--sort=")
+			desc := false
+			if strings.HasPrefix(field, "-") {
+				desc = true
+				field = strings.TrimPrefix(field, "-")
+			}
+			// Validate field
+			for _, valid := range validFields {
+				if field == valid {
+					return field, desc
+				}
+			}
+			fmt.Fprintf(os.Stderr, "Invalid sort field: %s (valid: %s)\n", field, strings.Join(validFields, ", "))
+			os.Exit(1)
+		}
+	}
+	return "id", false // default sort by id ascending
+}
+
+// buildOrderClause creates GORM order clause
+func buildOrderClause(field string, desc bool) string {
+	if desc {
+		return field + " DESC"
+	}
+	return field + " ASC"
+}
+
 // ============ Group Commands ============
 
 func handleGroupCommand(db *database.DB, args []string) {
@@ -768,7 +875,7 @@ func handleGroupCommand(db *database.DB, args []string) {
 
 	switch args[0] {
 	case "list", "ls":
-		listGroups(db)
+		listGroups(db, args[1:])
 	case "get":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Usage: wsctl group get <id>")
@@ -823,9 +930,12 @@ func handleGroupCommand(db *database.DB, args []string) {
 	}
 }
 
-func listGroups(db *database.DB) {
+func listGroups(db *database.DB, args []string) {
+	sortField, desc := parseSortOption(args, []string{"id", "name", "created_at"})
+	orderClause := buildOrderClause(sortField, desc)
+
 	var groups []database.Group
-	if err := db.Find(&groups).Error; err != nil {
+	if err := db.Order(orderClause).Find(&groups).Error; err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
