@@ -4,9 +4,12 @@
 *.dll
 *.so
 *.dylib
-wire-socket-server
-wire-socket-client
-wsctl
+/wire-socket-server
+/wire-socket-client
+/wsctl
+/server/wire-socket-server
+/server/wsctl
+/client/backend/wire-socket-client
 vpn-server
 vpn-client
 
