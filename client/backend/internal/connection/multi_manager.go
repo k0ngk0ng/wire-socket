@@ -1,8 +1,18 @@
 package connection
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
+	"wire-socket-client/internal/wireguard"
+	"wire-socket-client/internal/wstunnel"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // TunnelConnection represents a single tunnel connection
@@ -28,17 +38,20 @@ type MultiTunnelStatus struct {
 
 // MultiManager manages multiple VPN tunnel connections
 type MultiManager struct {
-	mu          sync.RWMutex
-	connections map[string]*tunnelConn // keyed by tunnel ID
-	configPath  string
+	mu            sync.RWMutex
+	connections   map[string]*tunnelConn // keyed by tunnel ID
+	configPath    string
+	interfaceIdx  int32 // atomic counter for interface naming
 }
 
 // tunnelConn is internal connection state
 type tunnelConn struct {
 	TunnelConnection
-	// wgInterface  *wireguard.Interface  // Each tunnel has its own interface
-	// tunnelClient *wstunnel.Client
-	stopCh chan struct{}
+	wgInterface   *wireguard.Interface
+	tunnelClient  *wstunnel.Client
+	stopCh        chan struct{}
+	privateKey    wgtypes.Key
+	serverPubKey  string
 }
 
 // NewMultiManager creates a new multi-tunnel manager
@@ -49,14 +62,22 @@ func NewMultiManager(configPath string) *MultiManager {
 	}
 }
 
+// ConnectRequest for multi-tunnel connection
+type MultiConnectRequest struct {
+	TunnelID      string `json:"tunnel_id"`
+	ServerAddress string `json:"server_address"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+}
+
 // Connect connects to a specific tunnel
-func (m *MultiManager) Connect(tunnelID, serverAddr, username, password string) error {
+func (m *MultiManager) Connect(req MultiConnectRequest) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Check if already connected
-	if conn, exists := m.connections[tunnelID]; exists {
+	if conn, exists := m.connections[req.TunnelID]; exists {
 		if conn.State == StateConnected || conn.State == StateConnecting {
+			m.mu.Unlock()
 			return nil // Already connected/connecting
 		}
 	}
@@ -64,72 +85,223 @@ func (m *MultiManager) Connect(tunnelID, serverAddr, username, password string) 
 	// Create new connection
 	conn := &tunnelConn{
 		TunnelConnection: TunnelConnection{
-			ID:            tunnelID,
-			ServerAddress: serverAddr,
+			ID:            req.TunnelID,
+			ServerAddress: req.ServerAddress,
 			State:         StateConnecting,
 		},
 		stopCh: make(chan struct{}),
 	}
 
-	m.connections[tunnelID] = conn
+	m.connections[req.TunnelID] = conn
+	m.mu.Unlock()
 
 	// Start connection in background
-	go m.connectTunnel(conn, username, password)
+	go m.connectTunnel(conn, req.Username, req.Password)
 
 	return nil
 }
 
 // connectTunnel handles the actual connection process
 func (m *MultiManager) connectTunnel(conn *tunnelConn, username, password string) {
-	// TODO: Implement actual connection logic
 	// 1. Generate WireGuard keypair
+	privateKey, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		m.setError(conn, fmt.Sprintf("failed to generate key: %v", err))
+		return
+	}
+	conn.privateKey = privateKey
+	publicKey := privateKey.PublicKey().String()
+
 	// 2. Login to tunnel server
-	// 3. Create WireGuard interface (utun0, utun1, etc.)
-	// 4. Configure WireGuard peer
+	loginReq := struct {
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		PublicKey string `json:"public_key"`
+	}{
+		Username:  username,
+		Password:  password,
+		PublicKey: publicKey,
+	}
+
+	jsonBody, _ := json.Marshal(loginReq)
+	apiURL := fmt.Sprintf("http://%s/api/auth/login", conn.ServerAddress)
+
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		m.setError(conn, fmt.Sprintf("login failed: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		m.setError(conn, fmt.Sprintf("login failed: status %d", resp.StatusCode))
+		return
+	}
+
+	var loginResp struct {
+		Interface struct {
+			Address string   `json:"address"`
+			DNS     []string `json:"dns"`
+		} `json:"interface"`
+		Peer struct {
+			PublicKey  string   `json:"public_key"`
+			Endpoint   string   `json:"endpoint"`
+			AllowedIPs []string `json:"allowed_ips"`
+		} `json:"peer"`
+		TunnelURL string `json:"tunnel_url"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
+		m.setError(conn, fmt.Sprintf("failed to parse response: %v", err))
+		return
+	}
+
+	conn.AssignedIP = loginResp.Interface.Address
+	conn.URL = loginResp.TunnelURL
+	conn.serverPubKey = loginResp.Peer.PublicKey
+
+	// 3. Create WireGuard interface
+	interfaceName := m.nextInterfaceName()
+	wgInterface, err := wireguard.NewInterface(interfaceName)
+	if err != nil {
+		m.setError(conn, fmt.Sprintf("failed to create interface: %v", err))
+		return
+	}
+	conn.wgInterface = wgInterface
+
+	// 4. Configure WireGuard with peer
+	allowedIPs := "0.0.0.0/0"
+	if len(loginResp.Peer.AllowedIPs) > 0 {
+		allowedIPs = joinStrings(loginResp.Peer.AllowedIPs, ",")
+	}
+
+	dns := ""
+	if len(loginResp.Interface.DNS) > 0 {
+		dns = joinStrings(loginResp.Interface.DNS, ",")
+	}
+
+	wgConfig := &wireguard.WGConfig{
+		PrivateKey: privateKey.String(),
+		Address:    conn.AssignedIP,
+		DNS:        dns,
+		Peer: wireguard.PeerConfig{
+			PublicKey:  loginResp.Peer.PublicKey,
+			Endpoint:   loginResp.Peer.Endpoint,
+			AllowedIPs: allowedIPs,
+		},
+	}
+
+	if err := wgInterface.Configure(wgConfig); err != nil {
+		wgInterface.Destroy()
+		m.setError(conn, fmt.Sprintf("failed to configure interface: %v", err))
+		return
+	}
+
 	// 5. Start WebSocket tunnel
-	// 6. Apply routes
+	tunnelClient := wstunnel.NewClient(wstunnel.Config{
+		ServerURL: loginResp.TunnelURL,
+		LocalAddr: "127.0.0.1:0",
+	})
 
-	// For now, just simulate connection
-	time.Sleep(time.Second)
+	if err := tunnelClient.Start(); err != nil {
+		wgInterface.Destroy()
+		m.setError(conn, fmt.Sprintf("failed to start tunnel: %v", err))
+		return
+	}
+	conn.tunnelClient = tunnelClient
 
+	// 6. Mark as connected
 	m.mu.Lock()
 	conn.State = StateConnected
 	conn.ConnectedAt = time.Now()
 	m.mu.Unlock()
+
+	// Start stats collection
+	go m.collectStats(conn)
+}
+
+// nextInterfaceName generates the next interface name
+func (m *MultiManager) nextInterfaceName() string {
+	idx := atomic.AddInt32(&m.interfaceIdx, 1) - 1
+	if runtime.GOOS == "darwin" {
+		return fmt.Sprintf("utun%d", 10+idx) // Start from utun10 to avoid conflicts
+	}
+	return fmt.Sprintf("wg%d", idx)
+}
+
+// setError sets connection error state
+func (m *MultiManager) setError(conn *tunnelConn, errMsg string) {
+	m.mu.Lock()
+	conn.State = StateFailed
+	conn.Error = errMsg
+	m.mu.Unlock()
+}
+
+// collectStats periodically collects traffic stats
+func (m *MultiManager) collectStats(conn *tunnelConn) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-conn.stopCh:
+			return
+		case <-ticker.C:
+			if conn.wgInterface != nil {
+				stats, err := conn.wgInterface.GetStats()
+				if err == nil {
+					m.mu.Lock()
+					conn.RxBytes = stats.RxBytes
+					conn.TxBytes = stats.TxBytes
+					m.mu.Unlock()
+				}
+			}
+		}
+	}
 }
 
 // Disconnect disconnects from a specific tunnel
 func (m *MultiManager) Disconnect(tunnelID string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	conn, exists := m.connections[tunnelID]
 	if !exists {
+		m.mu.Unlock()
 		return nil
 	}
+	m.mu.Unlock()
 
 	// Signal stop
-	close(conn.stopCh)
+	select {
+	case <-conn.stopCh:
+		// Already closed
+	default:
+		close(conn.stopCh)
+	}
 
-	// TODO: Cleanup
-	// 1. Stop WebSocket tunnel
-	// 2. Remove WireGuard interface
-	// 3. Cleanup routes
+	// Cleanup
+	if conn.tunnelClient != nil {
+		conn.tunnelClient.Stop()
+	}
+	if conn.wgInterface != nil {
+		conn.wgInterface.Destroy()
+	}
 
+	m.mu.Lock()
 	conn.State = StateDisconnected
 	delete(m.connections, tunnelID)
+	m.mu.Unlock()
 
 	return nil
 }
 
 // DisconnectAll disconnects from all tunnels
 func (m *MultiManager) DisconnectAll() {
-	m.mu.Lock()
+	m.mu.RLock()
 	tunnelIDs := make([]string, 0, len(m.connections))
 	for id := range m.connections {
 		tunnelIDs = append(tunnelIDs, id)
 	}
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
 	for _, id := range tunnelIDs {
 		m.Disconnect(id)
@@ -191,4 +363,16 @@ func (m *MultiManager) ConnectedCount() int {
 		}
 	}
 	return count
+}
+
+// Helper function
+func joinStrings(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
 }

@@ -11,13 +11,19 @@ import (
 
 // Server is the local HTTP API server
 type Server struct {
-	connMgr    *connection.Manager
-	httpServer *http.Server
-	engine     *gin.Engine
+	connMgr      *connection.Manager
+	multiMgr     *connection.MultiManager
+	httpServer   *http.Server
+	engine       *gin.Engine
 }
 
 // NewServer creates a new API server
 func NewServer(connMgr *connection.Manager, addr string) *Server {
+	return NewServerWithMulti(connMgr, nil, addr)
+}
+
+// NewServerWithMulti creates a new API server with multi-tunnel support
+func NewServerWithMulti(connMgr *connection.Manager, multiMgr *connection.MultiManager, addr string) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.Default()
 
@@ -36,8 +42,9 @@ func NewServer(connMgr *connection.Manager, addr string) *Server {
 	})
 
 	s := &Server{
-		connMgr: connMgr,
-		engine:  engine,
+		connMgr:  connMgr,
+		multiMgr: multiMgr,
+		engine:   engine,
 		httpServer: &http.Server{
 			Addr:    addr,
 			Handler: engine,
@@ -66,6 +73,15 @@ func (s *Server) setupRoutes() {
 
 		// Password management
 		api.POST("/change-password", s.changePassword)
+
+		// Multi-tunnel management
+		tunnels := api.Group("/tunnels")
+		{
+			tunnels.GET("", s.getTunnelsStatus)
+			tunnels.POST("/connect", s.connectTunnel)
+			tunnels.POST("/disconnect", s.disconnectTunnel)
+			tunnels.POST("/disconnect-all", s.disconnectAllTunnels)
+		}
 	}
 }
 
@@ -219,5 +235,91 @@ func (s *Server) changePassword(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "password changed successfully",
+	})
+}
+
+// Multi-tunnel handlers
+
+func (s *Server) getTunnelsStatus(c *gin.Context) {
+	if s.multiMgr == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
+		return
+	}
+
+	status := s.multiMgr.GetStatus()
+	c.JSON(http.StatusOK, status)
+}
+
+func (s *Server) connectTunnel(c *gin.Context) {
+	if s.multiMgr == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
+		return
+	}
+
+	var req connection.MultiConnectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if req.TunnelID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tunnel_id is required"})
+		return
+	}
+
+	if err := s.multiMgr.Connect(req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "connecting",
+		"tunnel_id": req.TunnelID,
+		"message":   "Tunnel connection initiated",
+	})
+}
+
+func (s *Server) disconnectTunnel(c *gin.Context) {
+	if s.multiMgr == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
+		return
+	}
+
+	var req struct {
+		TunnelID string `json:"tunnel_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if req.TunnelID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tunnel_id is required"})
+		return
+	}
+
+	if err := s.multiMgr.Disconnect(req.TunnelID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "disconnected",
+		"tunnel_id": req.TunnelID,
+		"message":   "Tunnel disconnected successfully",
+	})
+}
+
+func (s *Server) disconnectAllTunnels(c *gin.Context) {
+	if s.multiMgr == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
+		return
+	}
+
+	s.multiMgr.DisconnectAll()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "disconnected",
+		"message": "All tunnels disconnected",
 	})
 }

@@ -582,6 +582,7 @@
         </div>
         <div class="modal-tabs">
           <button class="modal-tab active" onclick="switchTab(event, 'routes')">Routes</button>
+          <button class="modal-tab" onclick="switchTab(event, 'tunnels')">Tunnels</button>
           <button class="modal-tab" onclick="switchTab(event, 'password')">Password</button>
         </div>
         <div class="modal-body">
@@ -598,6 +599,46 @@
                 <div class="empty-state">Connect to a server to see available routes</div>
               </div>
               <div id="routeMessage" class="hidden"></div>
+            </div>
+
+            <!-- Tunnels Tab -->
+            <div id="tab-tunnels" class="tab-pane">
+              <p style="font-size: 13px; color: #666; margin: 0 0 15px 0;">
+                Connect to multiple tunnel servers simultaneously.
+              </p>
+
+              <!-- Add Tunnel Form -->
+              <div class="modal-section">
+                <h3>Add Tunnel Connection</h3>
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <input type="text" id="tunnelId" placeholder="Tunnel ID (e.g., hk-01)">
+                </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <input type="text" id="tunnelServer" placeholder="Server Address (e.g., vpn.example.com:8080)">
+                </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <input type="text" id="tunnelUsername" placeholder="Username">
+                </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <input type="password" id="tunnelPassword" placeholder="Password">
+                </div>
+                <button class="btn btn-primary btn-small" onclick="connectTunnel()">
+                  Connect Tunnel
+                </button>
+              </div>
+
+              <!-- Active Tunnels -->
+              <div class="modal-section">
+                <h3>Active Tunnels</h3>
+                <div id="tunnelsList" class="route-list" style="max-height: 150px;">
+                  <div class="empty-state">No active tunnels</div>
+                </div>
+                <button class="btn btn-danger btn-small" style="margin-top: 10px;" onclick="disconnectAllTunnels()">
+                  Disconnect All
+                </button>
+              </div>
+
+              <div id="tunnelMessage" class="hidden"></div>
             </div>
 
             <!-- Password Tab -->
@@ -922,6 +963,7 @@
     function openSettings() {
       document.getElementById('settingsModal').classList.remove('hidden');
       loadRouteSettings();
+      loadTunnelsStatus();
       // Clear search box
       document.getElementById('routeSearch').value = '';
       // Clear password fields
@@ -1098,6 +1140,126 @@
 
     function hidePasswordMessage() {
       document.getElementById('passwordMessage').classList.add('hidden');
+    }
+
+    // Multi-tunnel functions
+    let tunnelsRefreshInterval = null;
+
+    async function loadTunnelsStatus() {
+      try {
+        const result = await window.electronAPI.getTunnelsStatus();
+        if (result.success) {
+          renderTunnelsList(result.data.connections || []);
+        }
+      } catch (e) {
+        console.error('Failed to load tunnels status:', e);
+      }
+    }
+
+    function renderTunnelsList(connections) {
+      const tunnelsList = document.getElementById('tunnelsList');
+
+      if (!connections || connections.length === 0) {
+        tunnelsList.innerHTML = '<div class="empty-state">No active tunnels</div>';
+        return;
+      }
+
+      let html = '';
+      connections.forEach(conn => {
+        const statusClass = conn.state === 'connected' ? 'connected' :
+                          conn.state === 'connecting' ? 'connecting' : 'disconnected';
+        const statusIcon = conn.state === 'connected' ? '🟢' :
+                          conn.state === 'connecting' ? '🟡' : '🔴';
+
+        html += `
+          <div class="route-item" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>${statusIcon}</span>
+              <div>
+                <div style="font-weight: 500;">${conn.id}</div>
+                <div style="font-size: 11px; color: #999;">${conn.assigned_ip || conn.server_address || '-'}</div>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-small" style="padding: 4px 10px; font-size: 12px;" onclick="disconnectSingleTunnel('${conn.id}')">
+              Disconnect
+            </button>
+          </div>
+        `;
+      });
+
+      tunnelsList.innerHTML = html;
+    }
+
+    async function connectTunnel() {
+      const tunnelId = document.getElementById('tunnelId').value;
+      const serverAddress = document.getElementById('tunnelServer').value;
+      const username = document.getElementById('tunnelUsername').value;
+      const password = document.getElementById('tunnelPassword').value;
+
+      if (!tunnelId || !serverAddress || !username || !password) {
+        showTunnelMessage('Please fill in all fields', 'error');
+        return;
+      }
+
+      try {
+        const result = await window.electronAPI.connectTunnel({
+          tunnel_id: tunnelId,
+          server_address: serverAddress,
+          username: username,
+          password: password
+        });
+
+        if (result.success) {
+          showTunnelMessage('Tunnel connection initiated', 'success');
+          // Clear form
+          document.getElementById('tunnelId').value = '';
+          document.getElementById('tunnelServer').value = '';
+          document.getElementById('tunnelUsername').value = '';
+          document.getElementById('tunnelPassword').value = '';
+          // Refresh tunnels list
+          loadTunnelsStatus();
+        } else {
+          showTunnelMessage(result.error || 'Failed to connect tunnel', 'error');
+        }
+      } catch (e) {
+        showTunnelMessage('Failed to connect tunnel: ' + e.message, 'error');
+      }
+    }
+
+    async function disconnectSingleTunnel(tunnelId) {
+      try {
+        const result = await window.electronAPI.disconnectTunnel(tunnelId);
+        if (result.success) {
+          showTunnelMessage('Tunnel disconnected', 'success');
+          loadTunnelsStatus();
+        } else {
+          showTunnelMessage(result.error || 'Failed to disconnect tunnel', 'error');
+        }
+      } catch (e) {
+        showTunnelMessage('Failed to disconnect tunnel: ' + e.message, 'error');
+      }
+    }
+
+    async function disconnectAllTunnels() {
+      try {
+        const result = await window.electronAPI.disconnectAllTunnels();
+        if (result.success) {
+          showTunnelMessage('All tunnels disconnected', 'success');
+          loadTunnelsStatus();
+        } else {
+          showTunnelMessage(result.error || 'Failed to disconnect tunnels', 'error');
+        }
+      } catch (e) {
+        showTunnelMessage('Failed to disconnect tunnels: ' + e.message, 'error');
+      }
+    }
+
+    function showTunnelMessage(message, type) {
+      const el = document.getElementById('tunnelMessage');
+      el.textContent = message;
+      el.className = type === 'success' ? 'success-message' : 'error-message';
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
     }
 
     // Start waiting for backend on page load

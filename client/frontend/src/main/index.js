@@ -699,6 +699,55 @@ ipcMain.handle('devtools:activate', async () => {
   return { success: true };
 });
 
+// Multi-tunnel handlers
+ipcMain.handle('api:tunnels:getStatus', async () => {
+  try {
+    const response = await axios.get(`${getApiBase()}/api/tunnels`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
+ipcMain.handle('api:tunnels:connect', async (event, data) => {
+  try {
+    const response = await axios.post(`${getApiBase()}/api/tunnels/connect`, data);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
+ipcMain.handle('api:tunnels:disconnect', async (event, tunnelId) => {
+  try {
+    const response = await axios.post(`${getApiBase()}/api/tunnels/disconnect`, { tunnel_id: tunnelId });
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
+ipcMain.handle('api:tunnels:disconnectAll', async () => {
+  try {
+    const response = await axios.post(`${getApiBase()}/api/tunnels/disconnect-all`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
 // Register keyboard shortcut for dev tools (only works when activated)
 app.whenReady().then(() => {
   // Disable default dev tools shortcut by intercepting it
