@@ -581,8 +581,8 @@
           <button class="modal-close" onclick="closeSettings()">&times;</button>
         </div>
         <div class="modal-tabs">
-          <button class="modal-tab active" onclick="switchTab('routes')">Routes</button>
-          <button class="modal-tab" onclick="switchTab('password')">Password</button>
+          <button class="modal-tab active" onclick="switchTab(event, 'routes')">Routes</button>
+          <button class="modal-tab" onclick="switchTab(event, 'password')">Password</button>
         </div>
         <div class="modal-body">
           <div class="tab-content">
@@ -900,7 +900,9 @@
     let excludedRoutes = [];
     let currentToken = null;
 
-    function switchTab(tabName) {
+    function switchTab(event, tabName) {
+      event.stopPropagation(); // Prevent event from bubbling to overlay
+
       // Update tab buttons
       document.querySelectorAll('.modal-tab').forEach(tab => {
         tab.classList.remove('active');
