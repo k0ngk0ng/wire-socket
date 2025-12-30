@@ -283,7 +283,7 @@ func main() {
 	}
 
 	// Initialize admin handler
-	adminHandler := api.NewAdminHandler(db, natManager)
+	adminHandler := api.NewAdminHandler(db, natManager, config.WireGuard.DeviceName)
 
 	apiRouter := api.NewRouter(authHandler, adminHandler, db, configGen, tunnelURL, config.WireGuard.Subnet)
 	apiRouter.SetupRoutes(engine)

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
+	"wire-socket-server/internal/route"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -12,15 +13,18 @@ import (
 
 // AdminHandler handles admin API endpoints
 type AdminHandler struct {
-	db         *database.DB
-	natManager *nat.Manager
+	db            *database.DB
+	natManager    *nat.Manager
+	routeManager  *route.Manager
+	defaultDevice string
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *database.DB, natManager *nat.Manager) *AdminHandler {
+func NewAdminHandler(db *database.DB, natManager *nat.Manager, defaultDevice string) *AdminHandler {
 	return &AdminHandler{
-		db:         db,
-		natManager: natManager,
+		db:            db,
+		natManager:    natManager,
+		defaultDevice: defaultDevice,
 	}
 }
 
@@ -307,6 +311,58 @@ func (h *AdminHandler) GetEnabledRoutes() ([]string, error) {
 		cidrs[i] = r.CIDR
 	}
 	return cidrs, nil
+}
+
+// ApplyRoutes applies server-side routes
+func (h *AdminHandler) ApplyRoutes(c *gin.Context) {
+	var dbRoutes []database.Route
+	if err := h.db.Where("enabled = ? AND apply_on_server = ?", true, true).Find(&dbRoutes).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch routes"})
+		return
+	}
+
+	if len(dbRoutes) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message":      "No routes to apply",
+			"routes_count": 0,
+		})
+		return
+	}
+
+	// Build route config
+	var routes []route.Route
+	for _, r := range dbRoutes {
+		routes = append(routes, route.Route{
+			CIDR:    r.CIDR,
+			Gateway: r.Gateway,
+			Device:  r.Device,
+			Metric:  r.Metric,
+		})
+	}
+
+	routeConfig := route.Config{
+		DefaultDevice: h.defaultDevice,
+		Routes:        routes,
+	}
+
+	// Cleanup existing routes and apply new ones
+	if h.routeManager != nil {
+		h.routeManager.Cleanup()
+	}
+
+	newManager := route.NewManager(routeConfig)
+	if err := newManager.Apply(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to apply routes: " + err.Error()})
+		return
+	}
+
+	// Update the manager reference
+	h.routeManager = newManager
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "Routes applied successfully",
+		"routes_count": len(routes),
+	})
 }
 
 // ============ NAT Rule Management ============

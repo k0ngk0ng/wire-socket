@@ -270,7 +270,10 @@
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">Routes</span>
-                        <button class="btn btn-primary" onclick="showRouteModal()">Add Route</button>
+                        <div class="btn-group">
+                            <button class="btn btn-success" onclick="applyRoutes()">Apply Routes</button>
+                            <button class="btn btn-primary" onclick="showRouteModal()">Add Route</button>
+                        </div>
                     </div>
                     <table>
                         <thead>
@@ -279,6 +282,7 @@
                                 <th>CIDR</th>
                                 <th>Gateway</th>
                                 <th>Device</th>
+                                <th>Metric</th>
                                 <th>Comment</th>
                                 <th>Push to Client</th>
                                 <th>Apply on Server</th>
@@ -373,6 +377,10 @@
                 <div class="form-group">
                     <label class="form-label">Device (optional)</label>
                     <input type="text" id="route-device" class="form-input" placeholder="wg0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Metric (optional)</label>
+                    <input type="number" id="route-metric" class="form-input" placeholder="0" min="0">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Comment</label>
@@ -632,6 +640,7 @@
                         <td><code>${r.cidr}</code></td>
                         <td>${r.gateway || '-'}</td>
                         <td>${r.device || '-'}</td>
+                        <td>${r.metric || 0}</td>
                         <td>${r.comment || '-'}</td>
                         <td><span class="badge ${r.push_to_client ? 'badge-success' : 'badge-secondary'}">${r.push_to_client ? 'Yes' : 'No'}</span></td>
                         <td><span class="badge ${r.apply_on_server ? 'badge-success' : 'badge-secondary'}">${r.apply_on_server ? 'Yes' : 'No'}</span></td>
@@ -641,7 +650,16 @@
                             <button class="btn btn-sm btn-danger" onclick="deleteRoute(${r.id})">Delete</button>
                         </td>
                     </tr>
-                `).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">No routes configured</td></tr>';
+                `).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--text-muted)">No routes configured</td></tr>';
+            } catch (err) {
+                showAlert(err.message, 'error');
+            }
+        }
+
+        async function applyRoutes() {
+            try {
+                await api('/admin/routes/apply', 'POST');
+                showAlert('Routes applied successfully');
             } catch (err) {
                 showAlert(err.message, 'error');
             }
@@ -653,6 +671,7 @@
             document.getElementById('route-cidr').value = route?.cidr || '';
             document.getElementById('route-gateway').value = route?.gateway || '';
             document.getElementById('route-device').value = route?.device || '';
+            document.getElementById('route-metric').value = route?.metric || '';
             document.getElementById('route-comment').value = route?.comment || '';
             document.getElementById('route-push-to-client').checked = route?.push_to_client ?? true;
             document.getElementById('route-apply-on-server').checked = route?.apply_on_server ?? false;
@@ -684,10 +703,12 @@
         document.getElementById('route-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = document.getElementById('route-id').value;
+            const metricVal = document.getElementById('route-metric').value;
             const body = {
                 cidr: document.getElementById('route-cidr').value,
                 gateway: document.getElementById('route-gateway').value,
                 device: document.getElementById('route-device').value,
+                metric: metricVal ? parseInt(metricVal, 10) : 0,
                 comment: document.getElementById('route-comment').value,
                 push_to_client: document.getElementById('route-push-to-client').checked,
                 apply_on_server: document.getElementById('route-apply-on-server').checked,
