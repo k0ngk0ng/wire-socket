@@ -188,6 +188,49 @@ func (i *Interface) Destroy() error {
 	return nil
 }
 
+// UpdateAllowedIPs updates the allowed IPs for a peer and reconfigures routes
+func (i *Interface) UpdateAllowedIPs(publicKey string, endpoint string, allowedIPsStr string) error {
+	// Parse allowed IPs
+	allowedIPs, err := parseAllowedIPs(allowedIPsStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse allowed IPs: %w", err)
+	}
+
+	// Remove existing peer
+	if err := i.backend.RemovePeer(publicKey); err != nil {
+		return fmt.Errorf("failed to remove peer: %w", err)
+	}
+
+	// Add peer with new AllowedIPs
+	err = i.backend.AddPeer(wg.PeerConfig{
+		PublicKey:           publicKey,
+		Endpoint:            endpoint,
+		AllowedIPs:          allowedIPs,
+		PersistentKeepalive: 25 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add peer: %w", err)
+	}
+
+	// Update routes
+	var routes []net.IPNet
+	for _, ip := range allowedIPs {
+		_, ipNet, err := net.ParseCIDR(ip)
+		if err != nil {
+			continue
+		}
+		routes = append(routes, *ipNet)
+	}
+
+	if len(routes) > 0 {
+		if err := i.backend.SetRoutes(routes); err != nil {
+			fmt.Printf("Warning: failed to set routes: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
 // parseAllowedIPs parses a comma-separated list of CIDR notations
 func parseAllowedIPs(s string) ([]string, error) {
 	var result []string

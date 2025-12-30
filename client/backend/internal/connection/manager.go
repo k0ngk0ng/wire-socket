@@ -76,6 +76,7 @@ type Manager struct {
 	wstunnelClient  *wstunnel.Client
 	token           string
 	assignedIP      string
+	peerPublicKey   string // Server's public key
 	connectedAt     time.Time
 	lastError       error
 	servers         []ServerConfig
@@ -156,6 +157,7 @@ func (m *Manager) doConnect(req ConnectRequest) {
 
 	m.token = token
 	m.assignedIP = wgConfig.Address
+	m.peerPublicKey = wgConfig.Peer.PublicKey
 
 	// Step 2: Start wstunnel client (built-in)
 	// Use tunnel URL from server response, fallback to request's TunnelURL or ServerAddress
@@ -606,13 +608,54 @@ func (m *Manager) GetRouteSettings() RouteSettings {
 	}
 }
 
-// SetExcludedRoutes sets the list of routes to exclude
+// SetExcludedRoutes sets the list of routes to exclude and applies them if connected
 func (m *Manager) SetExcludedRoutes(excluded []string) error {
 	m.mu.Lock()
 	m.routeSettings.ExcludedRoutes = excluded
 	m.mu.Unlock()
 
-	return m.saveRouteSettings()
+	if err := m.saveRouteSettings(); err != nil {
+		return err
+	}
+
+	// Apply routes immediately if connected
+	return m.ApplyRoutes()
+}
+
+// ApplyRoutes applies the current route settings to the WireGuard interface
+func (m *Manager) ApplyRoutes() error {
+	m.mu.RLock()
+	state := m.state
+	wgInterface := m.wgInterface
+	availableRoutes := m.availableRoutes
+	peerPublicKey := m.peerPublicKey
+	m.mu.RUnlock()
+
+	// Only apply if connected
+	if state != StateConnected || wgInterface == nil {
+		return nil
+	}
+
+	// Filter routes based on user preferences
+	activeRoutes := m.filterRoutes(availableRoutes)
+
+	if len(activeRoutes) == 0 {
+		return nil
+	}
+
+	// Update WireGuard interface with new AllowedIPs
+	allowedIPs := strings.Join(activeRoutes, ",")
+	if err := wgInterface.UpdateAllowedIPs(peerPublicKey, "127.0.0.1:51820", allowedIPs); err != nil {
+		return fmt.Errorf("failed to update routes: %w", err)
+	}
+
+	// Update active routes
+	m.mu.Lock()
+	m.activeRoutes = activeRoutes
+	m.mu.Unlock()
+
+	fmt.Printf("Routes applied: %v\n", activeRoutes)
+	return nil
 }
 
 // GetAvailableRoutes returns routes received from the server
