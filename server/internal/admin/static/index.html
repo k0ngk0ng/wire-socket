@@ -277,7 +277,11 @@
                             <tr>
                                 <th>ID</th>
                                 <th>CIDR</th>
+                                <th>Gateway</th>
+                                <th>Device</th>
                                 <th>Comment</th>
+                                <th>Push to Client</th>
+                                <th>Apply on Server</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -363,8 +367,24 @@
                     <input type="text" id="route-cidr" class="form-input" placeholder="192.168.1.0/24" required>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Gateway (optional)</label>
+                    <input type="text" id="route-gateway" class="form-input" placeholder="10.0.0.1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Device (optional)</label>
+                    <input type="text" id="route-device" class="form-input" placeholder="wg0">
+                </div>
+                <div class="form-group">
                     <label class="form-label">Comment</label>
                     <input type="text" id="route-comment" class="form-input">
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="route-push-to-client" checked>
+                    <label for="route-push-to-client">Push to Client</label>
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="route-apply-on-server">
+                    <label for="route-apply-on-server">Apply on Server</label>
                 </div>
                 <div class="form-group form-checkbox">
                     <input type="checkbox" id="route-enabled" checked>
@@ -610,14 +630,18 @@
                     <tr>
                         <td>${r.id}</td>
                         <td><code>${r.cidr}</code></td>
+                        <td>${r.gateway || '-'}</td>
+                        <td>${r.device || '-'}</td>
                         <td>${r.comment || '-'}</td>
+                        <td><span class="badge ${r.push_to_client ? 'badge-success' : 'badge-secondary'}">${r.push_to_client ? 'Yes' : 'No'}</span></td>
+                        <td><span class="badge ${r.apply_on_server ? 'badge-success' : 'badge-secondary'}">${r.apply_on_server ? 'Yes' : 'No'}</span></td>
                         <td><span class="badge ${r.enabled ? 'badge-success' : 'badge-danger'}">${r.enabled ? 'Enabled' : 'Disabled'}</span></td>
                         <td class="btn-group">
                             <button class="btn btn-sm btn-primary" onclick="editRoute(${r.id})">Edit</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteRoute(${r.id})">Delete</button>
                         </td>
                     </tr>
-                `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No routes configured</td></tr>';
+                `).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">No routes configured</td></tr>';
             } catch (err) {
                 showAlert(err.message, 'error');
             }
@@ -627,7 +651,11 @@
             document.getElementById('route-modal-title').textContent = route ? 'Edit Route' : 'Add Route';
             document.getElementById('route-id').value = route?.id || '';
             document.getElementById('route-cidr').value = route?.cidr || '';
+            document.getElementById('route-gateway').value = route?.gateway || '';
+            document.getElementById('route-device').value = route?.device || '';
             document.getElementById('route-comment').value = route?.comment || '';
+            document.getElementById('route-push-to-client').checked = route?.push_to_client ?? true;
+            document.getElementById('route-apply-on-server').checked = route?.apply_on_server ?? false;
             document.getElementById('route-enabled').checked = route?.enabled ?? true;
             document.getElementById('route-modal').classList.add('active');
         }
@@ -658,7 +686,11 @@
             const id = document.getElementById('route-id').value;
             const body = {
                 cidr: document.getElementById('route-cidr').value,
+                gateway: document.getElementById('route-gateway').value,
+                device: document.getElementById('route-device').value,
                 comment: document.getElementById('route-comment').value,
+                push_to_client: document.getElementById('route-push-to-client').checked,
+                apply_on_server: document.getElementById('route-apply-on-server').checked,
                 enabled: document.getElementById('route-enabled').checked
             };
             try {

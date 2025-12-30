@@ -591,6 +591,9 @@
               <p style="font-size: 13px; color: #666; margin: 0 0 10px 0;">
                 Uncheck routes to exclude them from VPN tunnel.
               </p>
+              <div style="margin-bottom: 10px;">
+                <input type="text" id="routeSearch" placeholder="Search CIDR..." oninput="filterRoutes()" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;">
+              </div>
               <div id="routeList" class="route-list">
                 <div class="empty-state">Connect to a server to see available routes</div>
               </div>
@@ -919,6 +922,8 @@
     function openSettings() {
       document.getElementById('settingsModal').classList.remove('hidden');
       loadRouteSettings();
+      // Clear search box
+      document.getElementById('routeSearch').value = '';
       // Clear password fields
       document.getElementById('currentPassword').value = '';
       document.getElementById('newPassword').value = '';
@@ -949,7 +954,7 @@
       }
     }
 
-    function renderRouteList() {
+    function renderRouteList(searchTerm = '') {
       const routeList = document.getElementById('routeList');
 
       if (currentRoutes.length === 0) {
@@ -957,8 +962,17 @@
         return;
       }
 
+      const filteredRoutes = searchTerm
+        ? currentRoutes.filter(route => route.toLowerCase().includes(searchTerm.toLowerCase()))
+        : currentRoutes;
+
+      if (filteredRoutes.length === 0) {
+        routeList.innerHTML = '<div class="empty-state">No routes match your search</div>';
+        return;
+      }
+
       let html = '';
-      currentRoutes.forEach((route, index) => {
+      filteredRoutes.forEach((route, index) => {
         const isExcluded = excludedRoutes.includes(route);
         const itemClass = isExcluded ? 'route-item excluded' : 'route-item';
         html += `
@@ -970,6 +984,11 @@
       });
 
       routeList.innerHTML = html;
+    }
+
+    function filterRoutes() {
+      const searchTerm = document.getElementById('routeSearch').value;
+      renderRouteList(searchTerm);
     }
 
     async function toggleRoute(route, isEnabled) {
