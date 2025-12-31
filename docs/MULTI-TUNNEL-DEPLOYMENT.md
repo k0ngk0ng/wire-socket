@@ -165,7 +165,8 @@ go build -o wsctl ./cmd/wsctl
 Create `/opt/wiresocket/tunnel/config.yaml`:
 
 ```yaml
-tunnel:
+# Node identity (for registration with auth service)
+node:
   id: "hk-01"                    # Unique ID for this tunnel
   name: "Hong Kong"              # Display name
   region: "asia"                 # Region code
@@ -192,11 +193,12 @@ wireguard:
   private_key: "xxxxx"           # From -gen-key
   public_key: "yyyyy"            # From -gen-key
 
-ws_tunnel:
+# WebSocket tunnel (same structure as server config)
+tunnel:
   enabled: true
   listen_addr: "0.0.0.0:443"
   public_host: "tunnel.example.com"
-  path: "/ws"
+  path: "/"
   # tls_cert: "/path/to/cert.pem"  # Optional: for WSS
   # tls_key: "/path/to/key.pem"
 

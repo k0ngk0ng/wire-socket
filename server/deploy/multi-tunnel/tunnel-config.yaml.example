@@ -1,7 +1,8 @@
 # WireSocket Tunnel Service Configuration
 # Edge tunnel node for multi-tunnel architecture
 
-tunnel:
+# Node identity (for registration with auth service)
+node:
   id: "hk-01"                              # Unique ID for this tunnel
   name: "Hong Kong"                        # Display name shown to users
   region: "asia"                           # Region code for grouping
@@ -31,11 +32,12 @@ wireguard:
   private_key: "YOUR_PRIVATE_KEY_HERE"
   public_key: "YOUR_PUBLIC_KEY_HERE"
 
-ws_tunnel:
+# WebSocket tunnel (same structure as server config)
+tunnel:
   enabled: true
   listen_addr: "0.0.0.0:443"
   public_host: "tunnel.example.com"        # Public hostname for WebSocket
-  path: "/ws"                              # WebSocket path
+  path: "/"                                # WebSocket path
   # Optional: Enable TLS for WSS
   # tls_cert: "/path/to/cert.pem"
   # tls_key: "/path/to/key.pem"

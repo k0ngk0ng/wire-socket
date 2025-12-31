@@ -20,13 +20,13 @@ import (
 
 // Config represents the tunnel service configuration
 type Config struct {
-	Tunnel struct {
+	Node struct {
 		ID          string `yaml:"id"`           // Unique tunnel ID (e.g., "hk-01")
 		Name        string `yaml:"name"`         // Display name (e.g., "Hong Kong")
 		Region      string `yaml:"region"`       // Region code
 		Token       string `yaml:"token"`        // Secret token for auth service
 		MasterToken string `yaml:"master_token"` // For initial registration
-	} `yaml:"tunnel"`
+	} `yaml:"node"`
 	Auth struct {
 		URL       string `yaml:"url"`        // Auth service URL
 		JWTSecret string `yaml:"jwt_secret"` // Shared JWT secret for admin auth
@@ -47,14 +47,14 @@ type Config struct {
 		PublicKey  string `yaml:"public_key"`
 		Mode       string `yaml:"mode"` // "userspace" or "kernel"
 	} `yaml:"wireguard"`
-	WebSocketTunnel struct {
+	Tunnel struct {
 		Enabled    bool   `yaml:"enabled"`
 		ListenAddr string `yaml:"listen_addr"`
 		PublicHost string `yaml:"public_host"`
 		Path       string `yaml:"path"`
 		TLSCert    string `yaml:"tls_cert"`
 		TLSKey     string `yaml:"tls_key"`
-	} `yaml:"ws_tunnel"`
+	} `yaml:"tunnel"`
 	PeerCleanup struct {
 		Enabled  *bool `yaml:"enabled"`  // Enable peer cleanup (default: true)
 		Timeout  int   `yaml:"timeout"`  // Seconds before inactive peer is removed (default: 180)
@@ -133,8 +133,8 @@ func main() {
 	tunnelURL := buildTunnelURL(config)
 	authConfig := tunnelservice.AuthConfig{
 		AuthURL:         config.Auth.URL,
-		TunnelID:        config.Tunnel.ID,
-		TunnelToken:     config.Tunnel.Token,
+		TunnelID:        config.Node.ID,
+		TunnelToken:     config.Node.Token,
 		TunnelURL:       tunnelURL,
 		Subnet:          config.WireGuard.Subnet,
 		ServerPublicKey: publicKey,
@@ -147,7 +147,7 @@ func main() {
 	if *register {
 		tempHandler := tunnelservice.NewAuthHandler(db, wgManager, authConfig)
 		internalURL := "http://" + config.Server.Address
-		if err := tempHandler.RegisterWithAuth(config.Tunnel.Name, tunnelURL, internalURL, config.Tunnel.Region, config.Tunnel.MasterToken); err != nil {
+		if err := tempHandler.RegisterWithAuth(config.Node.Name, tunnelURL, internalURL, config.Node.Region, config.Node.MasterToken); err != nil {
 			log.Fatalf("Failed to register with auth service: %v", err)
 		}
 		log.Println("Successfully registered with auth service")
@@ -185,13 +185,13 @@ func main() {
 	engine.Static("/admin", "./internal/tunnelservice/admin/static")
 
 	// Start WebSocket tunnel if enabled
-	if config.WebSocketTunnel.Enabled {
+	if config.Tunnel.Enabled {
 		go startTunnel(config, wgManager)
 	}
 
 	// Start server
 	log.Printf("Starting tunnel server on %s", config.Server.Address)
-	log.Printf("Tunnel ID: %s", config.Tunnel.ID)
+	log.Printf("Tunnel ID: %s", config.Node.ID)
 	log.Printf("Auth service: %s", config.Auth.URL)
 	if err := engine.Run(config.Server.Address); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
@@ -231,27 +231,27 @@ func loadConfig(path string) (*Config, error) {
 
 func buildTunnelURL(config *Config) string {
 	scheme := "ws"
-	if config.WebSocketTunnel.TLSCert != "" {
+	if config.Tunnel.TLSCert != "" {
 		scheme = "wss"
 	}
-	path := config.WebSocketTunnel.Path
+	path := config.Tunnel.Path
 	if path == "" {
 		path = "/"
 	}
-	return scheme + "://" + config.WebSocketTunnel.PublicHost + path
+	return scheme + "://" + config.Tunnel.PublicHost + path
 }
 
 func startTunnel(config *Config, wgManager *wireguard.Manager) {
 	tunnelConfig := tunnel.Config{
-		ListenAddr: config.WebSocketTunnel.ListenAddr,
+		ListenAddr: config.Tunnel.ListenAddr,
 		TargetAddr: "127.0.0.1:" + strconv.Itoa(config.WireGuard.ListenPort),
-		PathPrefix: config.WebSocketTunnel.Path,
-		TLSCert:    config.WebSocketTunnel.TLSCert,
-		TLSKey:     config.WebSocketTunnel.TLSKey,
+		PathPrefix: config.Tunnel.Path,
+		TLSCert:    config.Tunnel.TLSCert,
+		TLSKey:     config.Tunnel.TLSKey,
 	}
 
 	server := tunnel.NewServer(tunnelConfig)
-	log.Printf("Starting WebSocket tunnel on %s", config.WebSocketTunnel.ListenAddr)
+	log.Printf("Starting WebSocket tunnel on %s", config.Tunnel.ListenAddr)
 	if err := server.Start(); err != nil {
 		log.Printf("WebSocket tunnel error: %v", err)
 	}
