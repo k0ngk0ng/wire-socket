@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/wireguard"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthHandler handles authentication by proxying to auth service
@@ -24,6 +26,7 @@ type AuthHandler struct {
 	serverPubKey string
 	endpoint     string
 	dns          []string
+	jwtSecret    string
 }
 
 // NewAuthHandler creates a new AuthHandler
@@ -39,6 +42,7 @@ func NewAuthHandler(db *database.TunnelDB, wgManager *wireguard.Manager, config 
 		serverPubKey: config.ServerPublicKey,
 		endpoint:     config.Endpoint,
 		dns:          config.DNS,
+		jwtSecret:    config.JWTSecret,
 	}
 }
 
@@ -52,6 +56,7 @@ type AuthConfig struct {
 	ServerPublicKey string
 	Endpoint        string
 	DNS             []string
+	JWTSecret       string // For admin authentication
 }
 
 // LoginRequest from client
@@ -227,4 +232,61 @@ func (h *AuthHandler) GetConfig(c *gin.Context) {
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	// Proxy to auth service - not implemented yet
 	c.JSON(http.StatusNotImplemented, gin.H{"error": "password change should be done via auth service"})
+}
+
+// AdminAuthMiddleware validates JWT token for admin access
+func (h *AuthHandler) AdminAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Skip if no JWT secret configured (backwards compatibility)
+		if h.jwtSecret == "" {
+			c.Next()
+			return
+		}
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header required"})
+			c.Abort()
+			return
+		}
+
+		// Extract token from "Bearer <token>"
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
+			c.Abort()
+			return
+		}
+
+		// Parse and validate token
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(h.jwtSecret), nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.Abort()
+			return
+		}
+
+		// Check if user is admin
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			c.Abort()
+			return
+		}
+
+		isAdmin, _ := claims["is_admin"].(bool)
+		if !isAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
 }

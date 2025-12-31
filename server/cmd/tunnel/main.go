@@ -28,7 +28,8 @@ type Config struct {
 		MasterToken string `yaml:"master_token"` // For initial registration
 	} `yaml:"tunnel"`
 	Auth struct {
-		URL string `yaml:"url"` // Auth service URL
+		URL       string `yaml:"url"`        // Auth service URL
+		JWTSecret string `yaml:"jwt_secret"` // Shared JWT secret for admin auth
 	} `yaml:"auth"`
 	Server struct {
 		Address string `yaml:"address"`
@@ -139,6 +140,7 @@ func main() {
 		ServerPublicKey: publicKey,
 		Endpoint:        config.WireGuard.Endpoint,
 		DNS:             []string{config.WireGuard.DNS},
+		JWTSecret:       config.Auth.JWTSecret,
 	}
 
 	// Register with auth service if requested

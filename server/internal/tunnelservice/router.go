@@ -43,8 +43,9 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		// Config endpoint
 		api.GET("/config", r.authHandler.GetConfig)
 
-		// Admin endpoints (local management, no auth required - protected by network)
+		// Admin endpoints (require JWT auth if configured)
 		admin := api.Group("/admin")
+		admin.Use(r.authHandler.AdminAuthMiddleware())
 		{
 			// Route management
 			admin.GET("/routes", r.adminHandler.ListRoutes)
