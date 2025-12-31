@@ -126,6 +126,8 @@ func runAuthMode(config *Config, cmd string, args []string) {
 	}
 
 	switch cmd {
+	case "init-db":
+		initAuthDB(db)
 	case "user", "users":
 		handleAuthUserCommand(db, args)
 	case "tunnel", "tunnels":
@@ -1304,6 +1306,8 @@ func printAuthUsage() {
 Usage: wsctl <command> [subcommand] [options]
 
 Commands:
+  init-db                       Initialize database (create admin user if needed)
+
   user list                     List all users
   user get <id>                 Get user details
   user create <username> <email> <password> [--admin]
@@ -2165,4 +2169,33 @@ func deletePeer(db *database.TunnelDB, idStr string) {
 	}
 
 	fmt.Printf("Peer deleted: ID=%d, IP=%s\n", peer.ID, peer.IP)
+}
+
+// initAuthDB initializes the auth database (create admin user if needed)
+func initAuthDB(db *database.AuthDB) {
+	// Auto-migrate first
+	if err := db.AutoMigrate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error migrating database: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !db.NeedsInit() {
+		fmt.Println("Database already initialized (admin user exists)")
+		return
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error hashing password: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := db.InitAdmin(string(passwordHash)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating admin user: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Database initialized successfully")
+	fmt.Println("Default admin user: admin / admin123")
+	fmt.Println("IMPORTANT: Change the default password immediately!")
 }

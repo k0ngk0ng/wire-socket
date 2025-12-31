@@ -29,7 +29,7 @@ type Config struct {
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
-	initDB := flag.Bool("init-db", false, "Initialize database with default admin user")
+	initDB := flag.Bool("init-db", false, "Initialize database with default admin user (deprecated, auto-init on startup)")
 	flag.Parse()
 
 	// Load config
@@ -49,8 +49,8 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	// Init admin user if requested
-	if *initDB {
+	// Auto-init admin user if needed (or if explicitly requested)
+	if *initDB || db.NeedsInit() {
 		passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
 		if err != nil {
 			log.Fatalf("Failed to hash password: %v", err)
@@ -58,8 +58,10 @@ func main() {
 		if err := db.InitAdmin(string(passwordHash)); err != nil {
 			log.Fatalf("Failed to init admin: %v", err)
 		}
-		log.Println("Database initialized successfully")
-		return
+		if *initDB {
+			log.Println("Database initialized successfully")
+			return
+		}
 	}
 
 	// Set master token

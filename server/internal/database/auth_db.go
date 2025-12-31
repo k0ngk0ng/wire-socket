@@ -147,3 +147,10 @@ func (db *AuthDB) GetUserAllowedTunnels(userID uint) ([]string, error) {
 	}
 	return ids, nil
 }
+
+// NeedsInit checks if the database needs initialization (no admin user exists)
+func (db *AuthDB) NeedsInit() bool {
+	var count int64
+	db.Model(&AuthUser{}).Where("is_admin = ?", true).Count(&count)
+	return count == 0
+}
