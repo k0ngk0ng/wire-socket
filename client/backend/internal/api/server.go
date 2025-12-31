@@ -74,12 +74,14 @@ func (s *Server) setupRoutes() {
 		// Password management
 		api.POST("/change-password", s.changePassword)
 
+		// Auth (for multi-tunnel mode)
+		api.POST("/auth/login", s.authLogin)
+		api.POST("/auth/logout", s.authLogout)
+
 		// Multi-tunnel management
 		tunnels := api.Group("/tunnels")
 		{
 			tunnels.GET("", s.getTunnelsStatus)
-			tunnels.POST("/login", s.loginTunnels)
-			tunnels.POST("/logout", s.logoutTunnels)
 			tunnels.POST("/connect", s.connectTunnel)
 			tunnels.POST("/disconnect", s.disconnectTunnel)
 			tunnels.POST("/disconnect-all", s.disconnectAllTunnels)
@@ -252,7 +254,7 @@ func (s *Server) getTunnelsStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
-func (s *Server) loginTunnels(c *gin.Context) {
+func (s *Server) authLogin(c *gin.Context) {
 	if s.multiMgr == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
 		return
@@ -282,7 +284,7 @@ func (s *Server) loginTunnels(c *gin.Context) {
 	})
 }
 
-func (s *Server) logoutTunnels(c *gin.Context) {
+func (s *Server) authLogout(c *gin.Context) {
 	if s.multiMgr == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
 		return
