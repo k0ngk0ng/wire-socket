@@ -149,6 +149,8 @@ func runTunnelMode(config *Config, cmd string, args []string) {
 	}
 
 	switch cmd {
+	case "init-db":
+		initTunnelDB(db)
 	case "route", "routes":
 		handleTunnelRouteCommand(db, config, args)
 	case "nat":
@@ -1672,6 +1674,8 @@ func printTunnelUsage() {
 Usage: wsctl <command> [subcommand] [options]
 
 Commands:
+  init-db                     Initialize/migrate database
+
   route list                    List all routes
   route create <cidr> [opts]    Create a route
   route update <id> [opts]      Update a route
@@ -2198,4 +2202,14 @@ func initAuthDB(db *database.AuthDB) {
 	fmt.Println("Database initialized successfully")
 	fmt.Println("Default admin user: admin / admin123")
 	fmt.Println("IMPORTANT: Change the default password immediately!")
+}
+
+// initTunnelDB initializes the tunnel database (migrate tables)
+func initTunnelDB(db *database.TunnelDB) {
+	if err := db.AutoMigrate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error migrating database: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Database initialized successfully")
 }

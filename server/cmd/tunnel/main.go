@@ -63,7 +63,6 @@ type Config struct {
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
-	initDB := flag.Bool("init-db", false, "Initialize database")
 	genKey := flag.Bool("gen-key", false, "Generate WireGuard keys")
 	register := flag.Bool("register", false, "Register with auth service")
 	flag.Parse()
@@ -85,7 +84,7 @@ func main() {
 		return
 	}
 
-	// Initialize database
+	// Initialize database (auto-migrate on startup)
 	db, err := database.NewTunnelDB(config.Database.Path)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -93,11 +92,6 @@ func main() {
 
 	if err := db.AutoMigrate(); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
-	}
-
-	if *initDB {
-		log.Println("Database initialized successfully")
-		return
 	}
 
 	// Parse private key
