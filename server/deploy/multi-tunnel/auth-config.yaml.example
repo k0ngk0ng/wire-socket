@@ -1,0 +1,20 @@
+# WireSocket Auth Service Configuration
+# Central authentication service for multi-tunnel architecture
+
+server:
+  address: "0.0.0.0:8080"
+
+database:
+  # SQLite (default)
+  path: "./auth.db"
+  # Or PostgreSQL:
+  # path: "postgres://user:pass@localhost/wiresocket?sslmode=disable"
+
+auth:
+  # IMPORTANT: Change this in production! Use 32+ random characters.
+  # This secret must be shared with all tunnel nodes for admin API auth.
+  jwt_secret: "change-this-to-a-secure-random-string-32-chars-min"
+
+  # Master token for tunnel registration
+  # Tunnels use this to register themselves with auth service
+  master_token: "secret-token-for-tunnel-registration"

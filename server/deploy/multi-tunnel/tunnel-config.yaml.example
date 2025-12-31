@@ -1,0 +1,47 @@
+# WireSocket Tunnel Service Configuration
+# Edge tunnel node for multi-tunnel architecture
+
+tunnel:
+  id: "hk-01"                              # Unique ID for this tunnel
+  name: "Hong Kong"                        # Display name shown to users
+  region: "asia"                           # Region code for grouping
+  token: ""                                # Leave empty, set after registration
+  master_token: "secret-token-for-tunnel-registration"  # Must match auth service
+
+auth:
+  url: "http://auth-server:8080"           # Auth service URL
+  # IMPORTANT: Must match jwt_secret in auth service config
+  # Required for admin API authentication
+  jwt_secret: "change-this-to-a-secure-random-string-32-chars-min"
+
+server:
+  address: "0.0.0.0:8080"                  # Local API port
+
+database:
+  path: "./tunnel.db"
+
+wireguard:
+  device_name: "wg0"
+  mode: "userspace"                        # "userspace" (default) or "kernel"
+  listen_port: 51820
+  subnet: "10.0.0.0/24"                    # IMPORTANT: Each tunnel needs unique subnet!
+  dns: "1.1.1.1"
+  endpoint: "tunnel.example.com:51820"     # Public WireGuard endpoint
+  # Generate with: ./wire-socket-tunnel -gen-key
+  private_key: "YOUR_PRIVATE_KEY_HERE"
+  public_key: "YOUR_PUBLIC_KEY_HERE"
+
+ws_tunnel:
+  enabled: true
+  listen_addr: "0.0.0.0:443"
+  public_host: "tunnel.example.com"        # Public hostname for WebSocket
+  path: "/ws"                              # WebSocket path
+  # Optional: Enable TLS for WSS
+  # tls_cert: "/path/to/cert.pem"
+  # tls_key: "/path/to/key.pem"
+
+# Peer cleanup - automatically removes inactive WireGuard peers
+peer_cleanup:
+  enabled: true                            # Default: true
+  timeout: 180                             # Seconds before inactive peer is removed
+  interval: 30                             # Seconds between cleanup checks
