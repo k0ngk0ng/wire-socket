@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
@@ -53,6 +54,11 @@ type Config struct {
 		TLSCert    string `yaml:"tls_cert"`
 		TLSKey     string `yaml:"tls_key"`
 	} `yaml:"ws_tunnel"`
+	PeerCleanup struct {
+		Enabled  bool `yaml:"enabled"`  // Enable peer cleanup (default: true)
+		Timeout  int  `yaml:"timeout"`  // Seconds before inactive peer is removed (default: 180)
+		Interval int  `yaml:"interval"` // Seconds between cleanup checks (default: 30)
+	} `yaml:"peer_cleanup"`
 }
 
 func main() {
@@ -159,6 +165,24 @@ func main() {
 	// Setup API routes
 	router := tunnelservice.NewRouter(db, wgManager, natManager, authConfig, config.WireGuard.DeviceName)
 	router.SetupRoutes(engine)
+
+	// Start peer cleanup service (enabled by default)
+	if config.PeerCleanup.Enabled || config.PeerCleanup.Timeout == 0 {
+		cleanupConfig := tunnelservice.CleanupConfig{
+			Timeout:  time.Duration(config.PeerCleanup.Timeout) * time.Second,
+			Interval: time.Duration(config.PeerCleanup.Interval) * time.Second,
+		}
+		// Use defaults if not specified
+		if cleanupConfig.Timeout == 0 {
+			cleanupConfig.Timeout = 3 * time.Minute
+		}
+		if cleanupConfig.Interval == 0 {
+			cleanupConfig.Interval = 30 * time.Second
+		}
+		peerCleanup := tunnelservice.NewPeerCleanup(db, wgManager, cleanupConfig)
+		peerCleanup.Start()
+		defer peerCleanup.Stop()
+	}
 
 	// Serve admin UI
 	engine.Static("/admin", "./internal/tunnelservice/admin/static")

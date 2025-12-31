@@ -215,3 +215,8 @@ func itoa(i int) string {
 func (db *TunnelDB) UpdatePublicKey(userID uint, publicKey string) error {
 	return db.Model(&TunnelAllocatedIP{}).Where("user_id = ?", userID).Update("public_key", publicKey).Error
 }
+
+// MarkPeerDisconnected clears the public key for a disconnected peer
+func (db *TunnelDB) MarkPeerDisconnected(publicKey string) error {
+	return db.Model(&TunnelAllocatedIP{}).Where("public_key = ?", publicKey).Update("public_key", "").Error
+}
