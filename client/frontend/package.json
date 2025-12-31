@@ -77,8 +77,7 @@
     },
     "win": {
       "target": [
-        "nsis",
-        "msi"
+        "nsis"
       ],
       "icon": "assets/icon-1024.png",
       "requestedExecutionLevel": "requireAdministrator",
@@ -89,11 +88,6 @@
           "filter": ["**/*"]
         }
       ]
-    },
-    "msi": {
-      "oneClick": false,
-      "perMachine": true,
-      "runAfterFinish": true
     },
     "nsis": {
       "oneClick": false,
