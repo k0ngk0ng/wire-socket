@@ -56,6 +56,20 @@ jobs:
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
             go build -ldflags="-s -w -X main.Version=$VERSION" -o wire-socket-server-${{ matrix.suffix }} ./cmd/server
 
+      - name: Build auth
+        working-directory: server
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -ldflags="-s -w -X main.Version=$VERSION" -o wire-socket-auth-${{ matrix.suffix }} ./cmd/auth
+
+      - name: Build tunnel
+        working-directory: server
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -ldflags="-s -w -X main.Version=$VERSION" -o wire-socket-tunnel-${{ matrix.suffix }} ./cmd/tunnel
+
       - name: Build wsctl
         working-directory: server
         run: |
@@ -70,6 +84,18 @@ jobs:
         with:
           name: server-${{ matrix.suffix }}
           path: server/wire-socket-server-${{ matrix.suffix }}
+
+      - name: Upload auth artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-${{ matrix.suffix }}
+          path: server/wire-socket-auth-${{ matrix.suffix }}
+
+      - name: Upload tunnel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnel-${{ matrix.suffix }}
+          path: server/wire-socket-tunnel-${{ matrix.suffix }}
 
       - name: Upload wsctl artifact
         uses: actions/upload-artifact@v4
@@ -281,6 +307,10 @@ jobs:
           mkdir -p release
           # Server binaries
           find artifacts -name 'wire-socket-server-*' -exec cp {} release/ \;
+          # Auth binaries
+          find artifacts -name 'wire-socket-auth-*' -exec cp {} release/ \;
+          # Tunnel binaries
+          find artifacts -name 'wire-socket-tunnel-*' -exec cp {} release/ \;
           # wsctl binaries
           find artifacts -name 'wsctl-*' -exec cp {} release/ \;
           # Client packages
