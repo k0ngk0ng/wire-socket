@@ -8,8 +8,14 @@
 /wire-socket-client
 /wsctl
 /server/wire-socket-server
+/server/wire-socket-auth
+/server/wire-socket-tunnel
 /server/wsctl
+/server/server
+/server/auth
+/server/tunnel
 /client/backend/wire-socket-client
+/client/backend/client
 vpn-server
 vpn-client
 
