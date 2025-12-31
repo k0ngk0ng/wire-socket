@@ -92,6 +92,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "runElevated": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "WireSocket",

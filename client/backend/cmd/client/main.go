@@ -154,17 +154,20 @@ func main() {
 		return
 	}
 
-	// Change to executable directory (for wintun.dll on Windows)
+	// Get executable directory (for wintun.dll on Windows)
+	exeDir := ""
 	if exePath, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exePath)
+		exeDir = filepath.Dir(exePath)
+		// Also change current directory as fallback
 		os.Chdir(exeDir)
 	}
 
 	// Service configuration
 	svcConfig := &service.Config{
-		Name:        "WireSocketClient",
-		DisplayName: "WireSocket Client Service",
-		Description: "Manages VPN connections with WireGuard and wstunnel",
+		Name:             "WireSocketClient",
+		DisplayName:      "WireSocket Client Service",
+		Description:      "Manages VPN connections with WireGuard and wstunnel",
+		WorkingDirectory: exeDir, // Set working directory for service (needed for wintun.dll)
 	}
 
 	prg := &Program{}
