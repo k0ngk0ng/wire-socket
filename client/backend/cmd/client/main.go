@@ -154,6 +154,12 @@ func main() {
 		return
 	}
 
+	// Change to executable directory (for wintun.dll on Windows)
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		os.Chdir(exeDir)
+	}
+
 	// Service configuration
 	svcConfig := &service.Config{
 		Name:        "WireSocketClient",
