@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Password management
   changePassword: (data) => ipcRenderer.invoke('api:changePassword', data),
 
+  // Auth management (multi-server)
+  authLogin: (data) => ipcRenderer.invoke('api:auth:login', data),
+  authLogout: (data) => ipcRenderer.invoke('api:auth:logout', data),
+
   // Multi-tunnel management
   getTunnelsStatus: () => ipcRenderer.invoke('api:tunnels:getStatus'),
   connectTunnel: (data) => ipcRenderer.invoke('api:tunnels:connect', data),

@@ -26,19 +26,20 @@ type TunnelInfo struct {
 
 // AuthSession holds the authenticated session with auth service
 type AuthSession struct {
-	AuthURL   string       `json:"auth_url"`
-	Token     string       `json:"token"`
-	Expires   int64        `json:"expires"`
-	UserID    uint         `json:"user_id"`
-	Username  string       `json:"username"`
-	IsAdmin   bool         `json:"is_admin"`
-	Tunnels   []TunnelInfo `json:"tunnels"`
-	Password  string       `json:"-"` // Kept for tunnel login, not serialized
+	AuthURL  string       `json:"auth_url"`
+	Token    string       `json:"token"`
+	Expires  int64        `json:"expires"`
+	UserID   uint         `json:"user_id"`
+	Username string       `json:"username"`
+	IsAdmin  bool         `json:"is_admin"`
+	Tunnels  []TunnelInfo `json:"tunnels"`
+	Password string       `json:"-"` // Kept for tunnel login, not serialized
 }
 
 // TunnelConnection represents a single tunnel connection
 type TunnelConnection struct {
 	ID              string    `json:"id"`
+	AuthURL         string    `json:"auth_url"` // Which auth service this tunnel belongs to
 	Name            string    `json:"name"`
 	URL             string    `json:"url"`
 	Region          string    `json:"region"`
@@ -53,20 +54,17 @@ type TunnelConnection struct {
 
 // MultiTunnelStatus represents status of all tunnel connections
 type MultiTunnelStatus struct {
-	Authenticated bool               `json:"authenticated"`
-	AuthURL       string             `json:"auth_url,omitempty"`
-	Username      string             `json:"username,omitempty"`
-	Tunnels       []TunnelInfo       `json:"tunnels,omitempty"`       // Available tunnels
-	Connections   []TunnelConnection `json:"connections"`             // Active connections
-	TotalRx       uint64             `json:"total_rx"`
-	TotalTx       uint64             `json:"total_tx"`
+	Sessions    []AuthSession        `json:"sessions"`    // All auth sessions
+	Connections []TunnelConnection   `json:"connections"` // Active connections
+	TotalRx     uint64               `json:"total_rx"`
+	TotalTx     uint64               `json:"total_tx"`
 }
 
 // MultiManager manages authentication and multiple tunnel connections
 type MultiManager struct {
 	mu           sync.RWMutex
-	session      *AuthSession
-	connections  map[string]*tunnelConn
+	sessions     map[string]*AuthSession  // authURL -> session
+	connections  map[string]*tunnelConn   // tunnelID -> connection
 	configPath   string
 	interfaceIdx int32
 }
@@ -85,6 +83,7 @@ type tunnelConn struct {
 // NewMultiManager creates a new multi-tunnel manager
 func NewMultiManager(configPath string) *MultiManager {
 	return &MultiManager{
+		sessions:    make(map[string]*AuthSession),
 		connections: make(map[string]*tunnelConn),
 		configPath:  configPath,
 	}
@@ -101,6 +100,11 @@ type LoginRequest struct {
 func (m *MultiManager) Login(req LoginRequest) (*AuthSession, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Check if already logged in to this auth service
+	if existing, exists := m.sessions[req.AuthURL]; exists {
+		return existing, nil
+	}
 
 	// Call auth service login
 	loginReq := struct {
@@ -145,7 +149,7 @@ func (m *MultiManager) Login(req LoginRequest) (*AuthSession, error) {
 	}
 
 	// Store session
-	m.session = &AuthSession{
+	session := &AuthSession{
 		AuthURL:  req.AuthURL,
 		Token:    loginResp.Token,
 		Expires:  loginResp.Expires,
@@ -155,23 +159,65 @@ func (m *MultiManager) Login(req LoginRequest) (*AuthSession, error) {
 		Tunnels:  loginResp.Tunnels,
 		Password: req.Password, // Keep for tunnel login
 	}
+	m.sessions[req.AuthURL] = session
 
-	return m.session, nil
+	return session, nil
 }
 
-// Logout clears the session and disconnects all tunnels
-func (m *MultiManager) Logout() {
+// LogoutRequest for logging out from a specific auth service
+type LogoutRequest struct {
+	AuthURL string `json:"auth_url"`
+}
+
+// Logout logs out from a specific auth service and disconnects its tunnels
+func (m *MultiManager) Logout(req LogoutRequest) {
+	m.mu.Lock()
+	session, exists := m.sessions[req.AuthURL]
+	if !exists {
+		m.mu.Unlock()
+		return
+	}
+
+	// Get tunnel IDs belonging to this auth service
+	tunnelIDs := make([]string, 0)
+	for _, t := range session.Tunnels {
+		tunnelIDs = append(tunnelIDs, t.ID)
+	}
+
+	// Remove session
+	delete(m.sessions, req.AuthURL)
+	m.mu.Unlock()
+
+	// Disconnect tunnels belonging to this auth service
+	for _, id := range tunnelIDs {
+		m.Disconnect(id)
+	}
+}
+
+// LogoutAll clears all sessions and disconnects all tunnels
+func (m *MultiManager) LogoutAll() {
 	m.DisconnectAll()
 	m.mu.Lock()
-	m.session = nil
+	m.sessions = make(map[string]*AuthSession)
 	m.mu.Unlock()
 }
 
-// GetSession returns the current auth session
-func (m *MultiManager) GetSession() *AuthSession {
+// GetSession returns a specific auth session
+func (m *MultiManager) GetSession(authURL string) *AuthSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.session
+	return m.sessions[authURL]
+}
+
+// GetSessions returns all auth sessions
+func (m *MultiManager) GetSessions() []*AuthSession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	sessions := make([]*AuthSession, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
+	return sessions
 }
 
 // TunnelConnectRequest for connecting to a specific tunnel
@@ -183,23 +229,29 @@ type TunnelConnectRequest struct {
 func (m *MultiManager) Connect(req TunnelConnectRequest) error {
 	m.mu.Lock()
 
-	if m.session == nil {
-		m.mu.Unlock()
-		return fmt.Errorf("not authenticated - login first")
-	}
-
-	// Find tunnel info
+	// Find tunnel info from any session
 	var tunnelInfo *TunnelInfo
-	for _, t := range m.session.Tunnels {
-		if t.ID == req.TunnelID {
-			tunnelInfo = &t
+	var authURL string
+	var username, password string
+
+	for url, session := range m.sessions {
+		for _, t := range session.Tunnels {
+			if t.ID == req.TunnelID {
+				tunnelInfo = &t
+				authURL = url
+				username = session.Username
+				password = session.Password
+				break
+			}
+		}
+		if tunnelInfo != nil {
 			break
 		}
 	}
 
 	if tunnelInfo == nil {
 		m.mu.Unlock()
-		return fmt.Errorf("tunnel %s not found or not accessible", req.TunnelID)
+		return fmt.Errorf("tunnel %s not found - login to auth service first", req.TunnelID)
 	}
 
 	// Check if already connected
@@ -213,20 +265,17 @@ func (m *MultiManager) Connect(req TunnelConnectRequest) error {
 	// Create new connection
 	conn := &tunnelConn{
 		TunnelConnection: TunnelConnection{
-			ID:     tunnelInfo.ID,
-			Name:   tunnelInfo.Name,
-			URL:    tunnelInfo.URL,
-			Region: tunnelInfo.Region,
-			State:  StateConnecting,
+			ID:      tunnelInfo.ID,
+			AuthURL: authURL,
+			Name:    tunnelInfo.Name,
+			URL:     tunnelInfo.URL,
+			Region:  tunnelInfo.Region,
+			State:   StateConnecting,
 		},
 		stopCh: make(chan struct{}),
 	}
 
 	m.connections[req.TunnelID] = conn
-
-	// Get credentials for connection
-	username := m.session.Username
-	password := m.session.Password
 	internalURL := tunnelInfo.InternalURL
 
 	m.mu.Unlock()
@@ -450,14 +499,12 @@ func (m *MultiManager) GetStatus() MultiTunnelStatus {
 	defer m.mu.RUnlock()
 
 	status := MultiTunnelStatus{
+		Sessions:    make([]AuthSession, 0, len(m.sessions)),
 		Connections: make([]TunnelConnection, 0, len(m.connections)),
 	}
 
-	if m.session != nil {
-		status.Authenticated = true
-		status.AuthURL = m.session.AuthURL
-		status.Username = m.session.Username
-		status.Tunnels = m.session.Tunnels
+	for _, session := range m.sessions {
+		status.Sessions = append(status.Sessions, *session)
 	}
 
 	for _, conn := range m.connections {
@@ -509,6 +556,13 @@ func (m *MultiManager) ConnectedCount() int {
 		}
 	}
 	return count
+}
+
+// SessionCount returns number of auth sessions
+func (m *MultiManager) SessionCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.sessions)
 }
 
 // Helper function

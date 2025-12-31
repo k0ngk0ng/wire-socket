@@ -680,6 +680,31 @@ ipcMain.handle('api:changePassword', async (event, data) => {
   }
 });
 
+// Auth handlers (multi-server)
+ipcMain.handle('api:auth:login', async (event, data) => {
+  try {
+    const response = await axios.post(`${getApiBase()}/api/auth/login`, data);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
+ipcMain.handle('api:auth:logout', async (event, data) => {
+  try {
+    const response = await axios.post(`${getApiBase()}/api/auth/logout`, data);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
 // Update tray menu when connection status changes
 ipcMain.handle('tray:updateStatus', async (event, isConnected) => {
   updateTrayMenu(isConnected);

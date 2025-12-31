@@ -638,38 +638,32 @@
             <!-- Tunnels Tab -->
             <div id="tab-tunnels" class="tab-pane">
               <p style="font-size: 13px; color: #666; margin: 0 0 15px 0;">
-                Connect to multiple tunnel servers simultaneously.
+                Connect to multiple VPN servers simultaneously.
               </p>
 
-              <!-- Add Tunnel Form -->
+              <!-- Add Server Form -->
               <div class="modal-section">
-                <h3>Add Tunnel Connection</h3>
+                <h3>Add Server</h3>
                 <div class="form-group" style="margin-bottom: 10px;">
-                  <input type="text" id="tunnelId" placeholder="Tunnel ID (e.g., hk-01)">
+                  <input type="text" id="newAuthUrl" placeholder="Auth Server URL (e.g., https://auth.example.com)">
                 </div>
                 <div class="form-group" style="margin-bottom: 10px;">
-                  <input type="text" id="tunnelServer" placeholder="Server Address (e.g., vpn.example.com:8080)">
+                  <input type="text" id="newAuthUsername" placeholder="Username">
                 </div>
                 <div class="form-group" style="margin-bottom: 10px;">
-                  <input type="text" id="tunnelUsername" placeholder="Username">
+                  <input type="password" id="newAuthPassword" placeholder="Password">
                 </div>
-                <div class="form-group" style="margin-bottom: 10px;">
-                  <input type="password" id="tunnelPassword" placeholder="Password">
-                </div>
-                <button class="btn btn-primary btn-small" onclick="connectTunnel()">
-                  Connect Tunnel
+                <button class="btn btn-primary btn-small" onclick="addAuthServer()">
+                  Login to Server
                 </button>
               </div>
 
-              <!-- Active Tunnels -->
+              <!-- Connected Servers & Tunnels -->
               <div class="modal-section">
-                <h3>Active Tunnels</h3>
-                <div id="tunnelsList" class="route-list" style="max-height: 150px;">
-                  <div class="empty-state">No active tunnels</div>
+                <h3>Servers & Tunnels</h3>
+                <div id="serversList" class="route-list" style="max-height: 250px;">
+                  <div class="empty-state">No servers connected. Add a server above.</div>
                 </div>
-                <button class="btn btn-danger btn-small" style="margin-top: 10px;" onclick="disconnectAllTunnels()">
-                  Disconnect All
-                </button>
               </div>
 
               <div id="tunnelMessage" class="hidden"></div>
@@ -1234,79 +1228,145 @@
 
     // Multi-tunnel functions
     let tunnelsRefreshInterval = null;
+    let authSessions = [];  // Store auth sessions
 
     async function loadTunnelsStatus() {
       try {
         const result = await window.electronAPI.getTunnelsStatus();
         if (result.success) {
-          renderTunnelsList(result.data.connections || []);
+          authSessions = result.data.sessions || [];
+          const connections = result.data.connections || [];
+          renderServersList(authSessions, connections);
         }
       } catch (e) {
         console.error('Failed to load tunnels status:', e);
       }
     }
 
-    function renderTunnelsList(connections) {
-      const tunnelsList = document.getElementById('tunnelsList');
+    function renderServersList(sessions, connections) {
+      const serversList = document.getElementById('serversList');
 
-      if (!connections || connections.length === 0) {
-        tunnelsList.innerHTML = '<div class="empty-state">No active tunnels</div>';
+      if (!sessions || sessions.length === 0) {
+        serversList.innerHTML = '<div class="empty-state">No servers connected. Add a server above.</div>';
         return;
       }
 
       let html = '';
-      connections.forEach(conn => {
-        const statusClass = conn.state === 'connected' ? 'connected' :
-                          conn.state === 'connecting' ? 'connecting' : 'disconnected';
-        const statusIcon = conn.state === 'connected' ? '🟢' :
-                          conn.state === 'connecting' ? '🟡' : '🔴';
+      sessions.forEach(session => {
+        // Get tunnels for this auth service
+        const sessionTunnels = session.tunnels || [];
 
         html += `
-          <div class="route-item" style="justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span>${statusIcon}</span>
+          <div class="tunnel-group">
+            <div class="tunnel-group-header">
               <div>
-                <div style="font-weight: 500;">${conn.id}</div>
-                <div style="font-size: 11px; color: #999;">${conn.assigned_ip || conn.server_address || '-'}</div>
+                <span class="tunnel-name">${session.username}@${getHostname(session.auth_url)}</span>
               </div>
+              <button class="btn btn-secondary btn-small" style="padding: 3px 8px; font-size: 11px;" onclick="logoutFromServer('${escapeQuotes(session.auth_url)}')">
+                Logout
+              </button>
             </div>
-            <button class="btn btn-secondary btn-small" style="padding: 4px 10px; font-size: 12px;" onclick="disconnectSingleTunnel('${conn.id}')">
-              Disconnect
-            </button>
-          </div>
         `;
+
+        if (sessionTunnels.length === 0) {
+          html += '<div class="empty-state" style="padding: 10px;">No tunnels available</div>';
+        } else {
+          sessionTunnels.forEach(tunnel => {
+            // Find connection status for this tunnel
+            const conn = connections.find(c => c.id === tunnel.id);
+            const isConnected = conn && (conn.state === 'connected' || conn.state === 'connecting');
+            const statusIcon = conn ? (conn.state === 'connected' ? '🟢' : conn.state === 'connecting' ? '🟡' : '🔴') : '⚪';
+            const statusText = conn ? (conn.state === 'connected' ? conn.assigned_ip : conn.state) : 'Not connected';
+
+            html += `
+              <div class="route-item" style="justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span>${statusIcon}</span>
+                  <div>
+                    <div style="font-weight: 500;">${tunnel.name || tunnel.id}</div>
+                    <div style="font-size: 11px; color: #999;">${tunnel.region || ''} ${statusText}</div>
+                  </div>
+                </div>
+                ${isConnected
+                  ? `<button class="btn btn-secondary btn-small" style="padding: 3px 8px; font-size: 11px;" onclick="disconnectSingleTunnel('${tunnel.id}')">Disconnect</button>`
+                  : `<button class="btn btn-primary btn-small" style="padding: 3px 8px; font-size: 11px;" onclick="connectToTunnel('${tunnel.id}')">Connect</button>`
+                }
+              </div>
+            `;
+          });
+        }
+
+        html += '</div>';
       });
 
-      tunnelsList.innerHTML = html;
+      serversList.innerHTML = html;
     }
 
-    async function connectTunnel() {
-      const tunnelId = document.getElementById('tunnelId').value;
-      const serverAddress = document.getElementById('tunnelServer').value;
-      const username = document.getElementById('tunnelUsername').value;
-      const password = document.getElementById('tunnelPassword').value;
+    function getHostname(url) {
+      try {
+        const u = new URL(url);
+        return u.hostname;
+      } catch {
+        return url;
+      }
+    }
 
-      if (!tunnelId || !serverAddress || !username || !password) {
+    function escapeQuotes(str) {
+      return str.replace(/'/g, "\\'");
+    }
+
+    async function addAuthServer() {
+      const authUrl = document.getElementById('newAuthUrl').value.trim();
+      const username = document.getElementById('newAuthUsername').value.trim();
+      const password = document.getElementById('newAuthPassword').value;
+
+      if (!authUrl || !username || !password) {
         showTunnelMessage('Please fill in all fields', 'error');
         return;
       }
 
       try {
-        const result = await window.electronAPI.connectTunnel({
-          tunnel_id: tunnelId,
-          server_address: serverAddress,
+        const result = await window.electronAPI.authLogin({
+          auth_url: authUrl,
           username: username,
           password: password
         });
 
         if (result.success) {
-          showTunnelMessage('Tunnel connection initiated', 'success');
+          showTunnelMessage('Logged in successfully', 'success');
           // Clear form
-          document.getElementById('tunnelId').value = '';
-          document.getElementById('tunnelServer').value = '';
-          document.getElementById('tunnelUsername').value = '';
-          document.getElementById('tunnelPassword').value = '';
-          // Refresh tunnels list
+          document.getElementById('newAuthUrl').value = '';
+          document.getElementById('newAuthUsername').value = '';
+          document.getElementById('newAuthPassword').value = '';
+          // Refresh list
+          loadTunnelsStatus();
+        } else {
+          showTunnelMessage(result.error || 'Failed to login', 'error');
+        }
+      } catch (e) {
+        showTunnelMessage('Failed to login: ' + e.message, 'error');
+      }
+    }
+
+    async function logoutFromServer(authUrl) {
+      try {
+        const result = await window.electronAPI.authLogout({ auth_url: authUrl });
+        if (result.success) {
+          showTunnelMessage('Logged out successfully', 'success');
+          loadTunnelsStatus();
+        } else {
+          showTunnelMessage(result.error || 'Failed to logout', 'error');
+        }
+      } catch (e) {
+        showTunnelMessage('Failed to logout: ' + e.message, 'error');
+      }
+    }
+
+    async function connectToTunnel(tunnelId) {
+      try {
+        const result = await window.electronAPI.connectTunnel({ tunnel_id: tunnelId });
+        if (result.success) {
+          showTunnelMessage('Tunnel connection initiated', 'success');
           loadTunnelsStatus();
         } else {
           showTunnelMessage(result.error || 'Failed to connect tunnel', 'error');

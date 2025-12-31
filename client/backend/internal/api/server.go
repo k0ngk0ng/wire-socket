@@ -290,11 +290,23 @@ func (s *Server) authLogout(c *gin.Context) {
 		return
 	}
 
-	s.multiMgr.Logout()
+	var req connection.LogoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.AuthURL == "" {
+		// If no auth_url provided, logout from all
+		s.multiMgr.LogoutAll()
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "logged_out",
+			"message": "Logged out from all auth services",
+		})
+		return
+	}
+
+	s.multiMgr.Logout(req)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "logged_out",
-		"message": "Logged out and disconnected all tunnels",
+		"status":   "logged_out",
+		"auth_url": req.AuthURL,
+		"message":  "Logged out and disconnected tunnels",
 	})
 }
 
