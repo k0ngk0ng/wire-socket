@@ -1,9 +1,0 @@
-server:
-  address: ":8080"
-
-database:
-  path: "./auth.db"
-
-auth:
-  jwt_secret: "change-this-in-production-32chars"
-  master_token: "tunnel-registration-secret-token"  # Used by tunnel nodes to register
