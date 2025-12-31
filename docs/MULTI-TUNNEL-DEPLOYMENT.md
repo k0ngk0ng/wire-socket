@@ -1,8 +1,8 @@
 # Multi-Tunnel Architecture Deployment Guide
 
-## Upgrade from v0.5.4 to v0.6.1
+## Upgrade from v0.5.4 to v0.6.4
 
-v0.6.1 introduces multi-tunnel architecture. You have two deployment options:
+v0.6.4 introduces multi-tunnel architecture with automatic tunnel discovery. You have two deployment options:
 
 ### Option A: Keep Single Server (No Changes)
 
@@ -55,9 +55,9 @@ Migrate to central auth + distributed tunnel nodes.
 ### 1.1 Download Binary
 
 ```bash
-# From GitHub Release v0.6.1
-wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wire-socket-auth-linux-amd64
-wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wsctl-linux-amd64
+# From GitHub Release
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.4/wire-socket-auth-linux-amd64
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.4/wsctl-linux-amd64
 
 chmod +x wire-socket-auth-linux-amd64 wsctl-linux-amd64
 mv wire-socket-auth-linux-amd64 /opt/wiresocket/auth/wire-socket-auth
@@ -135,8 +135,8 @@ Access: `http://auth-server:8080/admin`
 ### 2.1 Download Binary
 
 ```bash
-wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wire-socket-tunnel-linux-amd64
-wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wsctl-linux-amd64
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.4/wire-socket-tunnel-linux-amd64
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.4/wsctl-linux-amd64
 
 chmod +x wire-socket-tunnel-linux-amd64 wsctl-linux-amd64
 mv wire-socket-tunnel-linux-amd64 /opt/wiresocket/tunnel/wire-socket-tunnel
@@ -198,6 +198,12 @@ ws_tunnel:
   path: "/ws"
   # tls_cert: "/path/to/cert.pem"  # Optional: for WSS
   # tls_key: "/path/to/key.pem"
+
+# Peer cleanup - automatically removes inactive WireGuard peers
+peer_cleanup:
+  enabled: true       # Enable/disable cleanup (default: true)
+  timeout: 180        # Seconds before inactive peer is removed (default: 180)
+  interval: 30        # Seconds between cleanup checks (default: 30)
 ```
 
 ### 2.4 Register with Auth Service
@@ -361,23 +367,99 @@ Your old v0.5.4 server becomes a tunnel node:
    systemctl start wire-socket-tunnel
    ```
 
-6. Update client connection settings to point to the tunnel
+6. Update client to use new Auth service address
 
 ---
 
-## 7. Client Configuration
+## 7. Client Configuration (v0.6.4+)
 
-Clients v0.6.1+ can connect to multiple tunnels simultaneously via **Settings → Tunnels**.
+### Simplified Connection Flow
 
-Each tunnel connection requires:
-- Tunnel ID (e.g., `hk-01`)
-- Server Address (e.g., `tunnel.hk.example.com:8080`)
-- Username
-- Password
+Clients v0.6.4+ only need the **Auth service address**. Tunnel discovery is automatic:
+
+1. **Login to Auth**: Client authenticates with Auth service
+2. **Get Tunnel List**: Auth returns list of tunnels the user can access
+3. **Connect to Tunnel**: Client selects and connects to specific tunnel(s)
+
+### Client Setup
+
+In the client app:
+
+1. Go to **Settings → Auth Service**
+2. Enter:
+   - Auth URL: `http://auth-server:8080` (or `https://` for production)
+   - Username
+   - Password
+3. Click **Login**
+4. Available tunnels will appear automatically
+5. Select tunnel(s) to connect
+
+### API Endpoints (for custom clients)
+
+```bash
+# Login to Auth service
+POST /api/auth/login
+{
+  "username": "user",
+  "password": "pass"
+}
+# Returns: token + list of accessible tunnels with connection URLs
+
+# Logout
+POST /api/auth/logout
+
+# Connect to specific tunnel (client backend)
+POST /api/tunnels/connect
+{
+  "tunnel_id": "hk-01"
+}
+
+# Disconnect from tunnel
+POST /api/tunnels/disconnect
+{
+  "tunnel_id": "hk-01"
+}
+
+# Get all tunnel statuses
+GET /api/tunnels
+```
+
+### Comparison: Old vs New Client Flow
+
+| v0.6.1 (Old) | v0.6.4+ (New) |
+|--------------|---------------|
+| Configure each tunnel manually | Only configure Auth service |
+| Enter tunnel address + credentials for each | Login once, get all tunnels |
+| No central management | Auth controls access per user |
 
 ---
 
-## 8. Monitoring
+## 8. Peer Cleanup
+
+v0.6.4 introduces automatic peer cleanup for tunnel nodes:
+
+- **How it works**: Monitors WireGuard peer handshake timestamps
+- **When cleaned**: Peers without handshake for `timeout` seconds are removed
+- **Handles**: Client logout, crash, network failure - all cleanup automatically
+
+### Configuration
+
+```yaml
+peer_cleanup:
+  enabled: true       # Default: true (set to false to disable)
+  timeout: 180        # Seconds of inactivity before removal (default: 180 = 3 min)
+  interval: 30        # Check interval in seconds (default: 30)
+```
+
+### Notes
+
+- Client sends keepalive every 25 seconds, so active connections won't be cleaned
+- Only inactive connections (no traffic for 3+ minutes) are removed
+- Database is updated when peer is cleaned (public key cleared)
+
+---
+
+## 9. Monitoring
 
 ### Auth Service Logs
 
@@ -405,7 +487,7 @@ journalctl -u wire-socket-tunnel -f
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Tunnel Registration Failed
 
@@ -435,9 +517,16 @@ ps aux | grep wireguard
 ss -ulnp | grep 51820
 ```
 
+### Peers Being Cleaned Too Quickly
+
+If peers are being removed unexpectedly:
+- Increase `peer_cleanup.timeout` in tunnel config
+- Check client keepalive is working (default: 25 seconds)
+- Verify network connectivity between client and tunnel
+
 ---
 
-## 10. Security Checklist
+## 11. Security Checklist
 
 - [ ] Change default admin password
 - [ ] Set strong `jwt_secret` (32+ random chars)
