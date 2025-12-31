@@ -47,7 +47,14 @@ func getPortFilePath() string {
 	case "linux":
 		dir = "/tmp"
 	case "windows":
-		dir = os.TempDir()
+		// Use ProgramData which is accessible to both SYSTEM and user accounts
+		dir = os.Getenv("ProgramData")
+		if dir == "" {
+			dir = "C:\\ProgramData"
+		}
+		dir = filepath.Join(dir, "WireSocket")
+		// Create directory if it doesn't exist
+		os.MkdirAll(dir, 0755)
 	default:
 		dir = "/tmp"
 	}

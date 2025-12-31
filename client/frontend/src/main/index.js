@@ -20,7 +20,9 @@ function getApiBase() {
 // Get the path to the port file
 function getPortFilePath() {
   if (process.platform === 'win32') {
-    return path.join(process.env.TEMP || 'C:\\Windows\\Temp', 'wiresocket-port');
+    // Use ProgramData which is accessible to both SYSTEM service and user accounts
+    const programData = process.env.ProgramData || 'C:\\ProgramData';
+    return path.join(programData, 'WireSocket', 'wiresocket-port');
   }
   return '/tmp/wiresocket-port';
 }
