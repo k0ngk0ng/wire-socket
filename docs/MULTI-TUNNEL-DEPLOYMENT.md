@@ -190,8 +190,9 @@ wireguard:
   subnet: "10.0.0.0/24"          # Each tunnel should have unique subnet!
   dns: "1.1.1.1"
   endpoint: "tunnel.example.com:51820"  # Public WireGuard endpoint
-  private_key: "xxxxx"           # From -gen-key
-  public_key: "yyyyy"            # From -gen-key
+  # Optional: auto-generates if not specified
+  # private_key: ""
+  # public_key: ""
 
 # WebSocket tunnel (same structure as server config)
 tunnel:

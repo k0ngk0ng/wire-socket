@@ -28,9 +28,10 @@ wireguard:
   subnet: "10.0.0.0/24"                    # IMPORTANT: Each tunnel needs unique subnet!
   dns: "1.1.1.1"
   endpoint: "tunnel.example.com:51820"     # Public WireGuard endpoint
-  # Generate with: ./wire-socket-tunnel -gen-key
-  private_key: "YOUR_PRIVATE_KEY_HERE"
-  public_key: "YOUR_PUBLIC_KEY_HERE"
+  # Optional: Leave empty to auto-generate on first run
+  # Use ./wire-socket-tunnel -gen-key to generate manually
+  # private_key: ""
+  # public_key: ""
 
 # WebSocket tunnel (same structure as server config)
 tunnel:

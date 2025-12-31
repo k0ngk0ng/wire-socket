@@ -95,12 +95,27 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	// Parse private key
-	privateKey, err := wgtypes.ParseKey(config.WireGuard.PrivateKey)
-	if err != nil {
-		log.Fatalf("Failed to parse private key: %v", err)
+	// Generate or load WireGuard server keys
+	privateKey, publicKey := config.WireGuard.PrivateKey, config.WireGuard.PublicKey
+	if privateKey == "" {
+		// Generate new key pair
+		log.Println("Generating new WireGuard key pair...")
+		newKey, err := wgtypes.GeneratePrivateKey()
+		if err != nil {
+			log.Fatalf("Failed to generate key pair: %v", err)
+		}
+		privateKey = newKey.String()
+		publicKey = newKey.PublicKey().String()
+		log.Printf("Generated keys - Public: %s", publicKey)
+		log.Println("TIP: Save these keys in config.yaml to persist across restarts")
+	} else {
+		// Parse existing private key
+		parsedKey, err := wgtypes.ParseKey(privateKey)
+		if err != nil {
+			log.Fatalf("Failed to parse private key: %v", err)
+		}
+		publicKey = parsedKey.PublicKey().String()
 	}
-	publicKey := privateKey.PublicKey().String()
 
 	// Initialize WireGuard
 	wgMode := wireguard.ModeUserspace
@@ -120,7 +135,7 @@ func main() {
 	wgManager.SetAddress(config.WireGuard.Subnet)
 
 	// Configure WireGuard device
-	if err := wgManager.ConfigureDevice(privateKey.String(), config.WireGuard.ListenPort); err != nil {
+	if err := wgManager.ConfigureDevice(privateKey, config.WireGuard.ListenPort); err != nil {
 		log.Fatalf("Failed to configure WireGuard: %v", err)
 	}
 
