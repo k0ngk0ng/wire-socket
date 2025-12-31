@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 	"wire-socket-server/internal/database"
-	"wire-socket-server/internal/tunnelwg"
+	"wire-socket-server/internal/wireguard"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,7 +15,7 @@ import (
 // AuthHandler handles authentication by proxying to auth service
 type AuthHandler struct {
 	db           *database.TunnelDB
-	wgManager    *tunnelwg.Manager
+	wgManager    *wireguard.Manager
 	authURL      string // URL of auth service
 	tunnelID     string
 	tunnelToken  string
@@ -27,7 +27,7 @@ type AuthHandler struct {
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(db *database.TunnelDB, wgManager *tunnelwg.Manager, config AuthConfig) *AuthHandler {
+func NewAuthHandler(db *database.TunnelDB, wgManager *wireguard.Manager, config AuthConfig) *AuthHandler {
 	return &AuthHandler{
 		db:           db,
 		wgManager:    wgManager,

@@ -8,9 +8,9 @@ import (
 
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
+	"wire-socket-server/internal/tunnel"
 	"wire-socket-server/internal/tunnelservice"
-	"wire-socket-server/internal/tunnelwg"
-	"wire-socket-server/internal/wstunnel"
+	"wire-socket-server/internal/wireguard"
 
 	"github.com/gin-gonic/gin"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -102,12 +102,12 @@ func main() {
 	publicKey := privateKey.PublicKey().String()
 
 	// Initialize WireGuard
-	wgMode := tunnelwg.ModeUserspace
+	wgMode := wireguard.ModeUserspace
 	if config.WireGuard.Mode == "kernel" {
-		wgMode = tunnelwg.ModeKernel
+		wgMode = wireguard.ModeKernel
 	}
 
-	wgManager, err := tunnelwg.NewManagerWithConfig(tunnelwg.ManagerConfig{
+	wgManager, err := wireguard.NewManagerWithConfig(wireguard.ManagerConfig{
 		DeviceName: config.WireGuard.DeviceName,
 		Mode:       wgMode,
 	})
@@ -220,8 +220,8 @@ func buildTunnelURL(config *Config) string {
 	return scheme + "://" + config.WebSocketTunnel.PublicHost + path
 }
 
-func startTunnel(config *Config, wgManager *tunnelwg.Manager) {
-	tunnelConfig := wstunnel.Config{
+func startTunnel(config *Config, wgManager *wireguard.Manager) {
+	tunnelConfig := tunnel.Config{
 		ListenAddr: config.WebSocketTunnel.ListenAddr,
 		TargetAddr: "127.0.0.1:" + strconv.Itoa(config.WireGuard.ListenPort),
 		PathPrefix: config.WebSocketTunnel.Path,
@@ -229,7 +229,7 @@ func startTunnel(config *Config, wgManager *tunnelwg.Manager) {
 		TLSKey:     config.WebSocketTunnel.TLSKey,
 	}
 
-	server := wstunnel.NewServer(tunnelConfig)
+	server := tunnel.NewServer(tunnelConfig)
 	log.Printf("Starting WebSocket tunnel on %s", config.WebSocketTunnel.ListenAddr)
 	if err := server.Start(); err != nil {
 		log.Printf("WebSocket tunnel error: %v", err)

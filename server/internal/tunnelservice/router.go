@@ -3,7 +3,7 @@ package tunnelservice
 import (
 	"wire-socket-server/internal/database"
 	"wire-socket-server/internal/nat"
-	"wire-socket-server/internal/tunnelwg"
+	"wire-socket-server/internal/wireguard"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,7 +16,7 @@ type Router struct {
 }
 
 // NewRouter creates a new Router
-func NewRouter(db *database.TunnelDB, wgManager *tunnelwg.Manager, natManager *nat.Manager, authConfig AuthConfig, defaultDevice string) *Router {
+func NewRouter(db *database.TunnelDB, wgManager *wireguard.Manager, natManager *nat.Manager, authConfig AuthConfig, defaultDevice string) *Router {
 	return &Router{
 		db:           db,
 		authHandler:  NewAuthHandler(db, wgManager, authConfig),
