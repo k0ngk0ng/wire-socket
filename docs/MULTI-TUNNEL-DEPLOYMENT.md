@@ -174,6 +174,7 @@ tunnel:
 
 auth:
   url: "http://auth-server:8080" # Auth service URL
+  jwt_secret: "same-secret-as-auth-service"  # Required for admin API auth
 
 server:
   address: "0.0.0.0:8080"        # Local API
@@ -242,8 +243,10 @@ systemctl start wire-socket-tunnel
 
 Access: `http://tunnel-server:8080/admin`
 
-- No login required (local management only)
+- Requires JWT authentication (use token from Auth service login)
+- User must have `is_admin: true` claim in JWT
 - Manage routes and NAT rules
+- If `jwt_secret` is not configured, admin API is open (not recommended for production)
 
 ---
 
@@ -529,7 +532,7 @@ If peers are being removed unexpectedly:
 ## 11. Security Checklist
 
 - [ ] Change default admin password
-- [ ] Set strong `jwt_secret` (32+ random chars)
+- [ ] Set strong `jwt_secret` (32+ random chars) - **must be same on Auth and all Tunnel nodes**
 - [ ] Set unique `master_token` for tunnel registration
 - [ ] Use HTTPS for auth service in production
 - [ ] Use WSS (TLS) for WebSocket tunnels
