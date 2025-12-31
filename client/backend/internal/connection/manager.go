@@ -171,7 +171,7 @@ func (m *Manager) doConnect(req ConnectRequest) {
 	}
 
 	wstunnelClient := wstunnel.NewClient(wstunnel.Config{
-		LocalAddr: "127.0.0.1:51820",
+		LocalAddr: "127.0.0.1:0", // Use dynamic port to avoid conflicts
 		ServerURL: wsURL,
 		Insecure:  true, // TODO: Add proper TLS verification
 	})
@@ -183,8 +183,8 @@ func (m *Manager) doConnect(req ConnectRequest) {
 
 	m.wstunnelClient = wstunnelClient
 
-	// Give wstunnel a moment to start
-	time.Sleep(1 * time.Second)
+	// Get the actual port the tunnel client is listening on
+	tunnelPort := wstunnelClient.LocalPort()
 
 	// Step 3: Create and configure WireGuard interface
 	wgInterface, err := wireguard.NewInterface("")
@@ -194,8 +194,8 @@ func (m *Manager) doConnect(req ConnectRequest) {
 		return
 	}
 
-	// Set endpoint to localhost (wstunnel)
-	wgConfig.Peer.Endpoint = "127.0.0.1:51820"
+	// Set endpoint to localhost (wstunnel) using the dynamically assigned port
+	wgConfig.Peer.Endpoint = fmt.Sprintf("127.0.0.1:%d", tunnelPort)
 
 	// Store available routes from server
 	m.mu.Lock()

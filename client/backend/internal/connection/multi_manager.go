@@ -355,7 +355,23 @@ func (m *MultiManager) connectTunnel(conn *tunnelConn, internalURL, username, pa
 	}
 	conn.wgInterface = wgInterface
 
-	// 4. Configure WireGuard with peer
+	// 4. Start WebSocket tunnel first to get the local port
+	tunnelClient := wstunnel.NewClient(wstunnel.Config{
+		ServerURL: loginResp.TunnelURL,
+		LocalAddr: "127.0.0.1:0", // Use dynamic port to avoid conflicts
+	})
+
+	if err := tunnelClient.Start(); err != nil {
+		wgInterface.Destroy()
+		m.setError(conn, fmt.Sprintf("failed to start tunnel: %v", err))
+		return
+	}
+	conn.tunnelClient = tunnelClient
+
+	// Get the actual port the tunnel client is listening on
+	tunnelPort := tunnelClient.LocalPort()
+
+	// 5. Configure WireGuard with peer (pointing to local wstunnel)
 	allowedIPs := "0.0.0.0/0"
 	if len(loginResp.Peer.AllowedIPs) > 0 {
 		allowedIPs = joinStrings(loginResp.Peer.AllowedIPs, ",")
@@ -372,29 +388,17 @@ func (m *MultiManager) connectTunnel(conn *tunnelConn, internalURL, username, pa
 		DNS:        dns,
 		Peer: wireguard.PeerConfig{
 			PublicKey:  loginResp.Peer.PublicKey,
-			Endpoint:   loginResp.Peer.Endpoint,
+			Endpoint:   fmt.Sprintf("127.0.0.1:%d", tunnelPort), // Point to local wstunnel
 			AllowedIPs: allowedIPs,
 		},
 	}
 
 	if err := wgInterface.Configure(wgConfig); err != nil {
+		tunnelClient.Stop()
 		wgInterface.Destroy()
 		m.setError(conn, fmt.Sprintf("failed to configure interface: %v", err))
 		return
 	}
-
-	// 5. Start WebSocket tunnel
-	tunnelClient := wstunnel.NewClient(wstunnel.Config{
-		ServerURL: loginResp.TunnelURL,
-		LocalAddr: "127.0.0.1:0",
-	})
-
-	if err := tunnelClient.Start(); err != nil {
-		wgInterface.Destroy()
-		m.setError(conn, fmt.Sprintf("failed to start tunnel: %v", err))
-		return
-	}
-	conn.tunnelClient = tunnelClient
 
 	// 6. Mark as connected
 	m.mu.Lock()

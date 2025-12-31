@@ -23,14 +23,15 @@ const (
 
 // Client handles UDP listening and forwards to WebSocket
 type Client struct {
-	localAddr string          // Local UDP listen address (e.g., "127.0.0.1:51820")
-	serverURL string          // WebSocket server URL (e.g., "wss://server:443")
-	conn      *websocket.Conn
-	udpConn   *net.UDPConn
-	mu        sync.Mutex
-	running   bool
-	stopChan  chan struct{}
-	insecure  bool // Skip TLS verification
+	localAddr  string          // Local UDP listen address (e.g., "127.0.0.1:51820")
+	serverURL  string          // WebSocket server URL (e.g., "wss://server:443")
+	conn       *websocket.Conn
+	udpConn    *net.UDPConn
+	mu         sync.Mutex
+	running    bool
+	stopChan   chan struct{}
+	insecure   bool // Skip TLS verification
+	actualPort int  // Actual port after binding (useful when using port 0)
 }
 
 // Config holds client configuration
@@ -71,6 +72,9 @@ func (c *Client) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on UDP %s: %w", c.localAddr, err)
 	}
+
+	// Store the actual port (useful when binding to port 0)
+	c.actualPort = c.udpConn.LocalAddr().(*net.UDPAddr).Port
 
 	// Connect to WebSocket server
 	dialer := websocket.Dialer{
@@ -131,6 +135,12 @@ func (c *Client) IsRunning() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.running
+}
+
+// LocalPort returns the actual local UDP port the client is listening on.
+// This is useful when the client was configured with port 0 (dynamic port).
+func (c *Client) LocalPort() int {
+	return c.actualPort
 }
 
 // udpToWS forwards data from local UDP to WebSocket
