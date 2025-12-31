@@ -24,19 +24,32 @@ func NewAuthHandler(db *database.AuthDB, jwtSecret string) *AuthHandler {
 	}
 }
 
-// LoginRequest for admin login
+// LoginRequest for user login
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
-// LoginResponse for admin login
-type LoginResponse struct {
-	Token   string `json:"token"`
-	Expires int64  `json:"expires"`
+// TunnelInfo contains tunnel connection info for clients
+type TunnelInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	Region      string `json:"region"`
+	InternalURL string `json:"internal_url"` // API endpoint for login
 }
 
-// Login handles POST /api/auth/login - for admin web interface
+// LoginResponse for user login
+type LoginResponse struct {
+	Token    string       `json:"token"`
+	Expires  int64        `json:"expires"`
+	UserID   uint         `json:"user_id"`
+	Username string       `json:"username"`
+	IsAdmin  bool         `json:"is_admin"`
+	Tunnels  []TunnelInfo `json:"tunnels"` // Accessible tunnels with connection info
+}
+
+// Login handles POST /api/auth/login - for both admin and regular users
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -44,8 +57,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Find user (allow both admin and regular users)
 	var user database.AuthUser
-	if err := h.db.Where("username = ? AND is_active = ? AND is_admin = ?", req.Username, true, true).First(&user).Error; err != nil {
+	if err := h.db.Where("username = ? AND is_active = ?", req.Username, true).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
@@ -70,10 +84,53 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Get user's accessible tunnels
+	tunnels, err := h.getUserTunnels(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tunnel access"})
+		return
+	}
+
 	c.JSON(http.StatusOK, LoginResponse{
-		Token:   tokenString,
-		Expires: expires.Unix(),
+		Token:    tokenString,
+		Expires:  expires.Unix(),
+		UserID:   user.ID,
+		Username: user.Username,
+		IsAdmin:  user.IsAdmin,
+		Tunnels:  tunnels,
 	})
+}
+
+// getUserTunnels returns tunnels accessible by the user with connection info
+func (h *AuthHandler) getUserTunnels(userID uint) ([]TunnelInfo, error) {
+	// Get allowed tunnel IDs
+	tunnelIDs, err := h.db.GetUserAllowedTunnels(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tunnelIDs) == 0 {
+		return []TunnelInfo{}, nil
+	}
+
+	// Get tunnel details
+	var tunnels []database.Tunnel
+	if err := h.db.Where("id IN ? AND is_active = ?", tunnelIDs, true).Find(&tunnels).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]TunnelInfo, len(tunnels))
+	for i, t := range tunnels {
+		result[i] = TunnelInfo{
+			ID:          t.ID,
+			Name:        t.Name,
+			URL:         t.URL,
+			Region:      t.Region,
+			InternalURL: t.InternalURL,
+		}
+	}
+
+	return result, nil
 }
 
 // AuthMiddleware validates JWT tokens for admin API

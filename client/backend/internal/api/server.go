@@ -78,6 +78,8 @@ func (s *Server) setupRoutes() {
 		tunnels := api.Group("/tunnels")
 		{
 			tunnels.GET("", s.getTunnelsStatus)
+			tunnels.POST("/login", s.loginTunnels)
+			tunnels.POST("/logout", s.logoutTunnels)
 			tunnels.POST("/connect", s.connectTunnel)
 			tunnels.POST("/disconnect", s.disconnectTunnel)
 			tunnels.POST("/disconnect-all", s.disconnectAllTunnels)
@@ -250,13 +252,57 @@ func (s *Server) getTunnelsStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
+func (s *Server) loginTunnels(c *gin.Context) {
+	if s.multiMgr == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
+		return
+	}
+
+	var req connection.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if req.AuthURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auth_url is required"})
+		return
+	}
+
+	session, err := s.multiMgr.Login(req)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"authenticated": true,
+		"username":      session.Username,
+		"tunnels":       session.Tunnels,
+	})
+}
+
+func (s *Server) logoutTunnels(c *gin.Context) {
+	if s.multiMgr == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
+		return
+	}
+
+	s.multiMgr.Logout()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "logged_out",
+		"message": "Logged out and disconnected all tunnels",
+	})
+}
+
 func (s *Server) connectTunnel(c *gin.Context) {
 	if s.multiMgr == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "multi-tunnel not enabled"})
 		return
 	}
 
-	var req connection.MultiConnectRequest
+	var req connection.TunnelConnectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return

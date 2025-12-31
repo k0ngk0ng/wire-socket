@@ -15,43 +15,69 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// TunnelInfo represents a tunnel from the auth service
+type TunnelInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	Region      string `json:"region"`
+	InternalURL string `json:"internal_url"` // API endpoint
+}
+
+// AuthSession holds the authenticated session with auth service
+type AuthSession struct {
+	AuthURL   string       `json:"auth_url"`
+	Token     string       `json:"token"`
+	Expires   int64        `json:"expires"`
+	UserID    uint         `json:"user_id"`
+	Username  string       `json:"username"`
+	IsAdmin   bool         `json:"is_admin"`
+	Tunnels   []TunnelInfo `json:"tunnels"`
+	Password  string       `json:"-"` // Kept for tunnel login, not serialized
+}
+
 // TunnelConnection represents a single tunnel connection
 type TunnelConnection struct {
-	ID            string    `json:"id"`             // Tunnel ID (e.g., "hk-01")
-	Name          string    `json:"name"`           // Display name
-	URL           string    `json:"url"`            // Tunnel WebSocket URL
-	ServerAddress string    `json:"server_address"` // API address
-	State         State     `json:"state"`
-	AssignedIP    string    `json:"assigned_ip,omitempty"`
-	ConnectedAt   time.Time `json:"connected_at,omitempty"`
-	RxBytes       uint64    `json:"rx_bytes"`
-	TxBytes       uint64    `json:"tx_bytes"`
-	Error         string    `json:"error,omitempty"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	URL         string    `json:"url"`
+	Region      string    `json:"region"`
+	State       State     `json:"state"`
+	AssignedIP  string    `json:"assigned_ip,omitempty"`
+	ConnectedAt time.Time `json:"connected_at,omitempty"`
+	RxBytes     uint64    `json:"rx_bytes"`
+	TxBytes     uint64    `json:"tx_bytes"`
+	Error       string    `json:"error,omitempty"`
 }
 
 // MultiTunnelStatus represents status of all tunnel connections
 type MultiTunnelStatus struct {
-	Connections []TunnelConnection `json:"connections"`
-	TotalRx     uint64             `json:"total_rx"`
-	TotalTx     uint64             `json:"total_tx"`
+	Authenticated bool               `json:"authenticated"`
+	AuthURL       string             `json:"auth_url,omitempty"`
+	Username      string             `json:"username,omitempty"`
+	Tunnels       []TunnelInfo       `json:"tunnels,omitempty"`       // Available tunnels
+	Connections   []TunnelConnection `json:"connections"`             // Active connections
+	TotalRx       uint64             `json:"total_rx"`
+	TotalTx       uint64             `json:"total_tx"`
 }
 
-// MultiManager manages multiple VPN tunnel connections
+// MultiManager manages authentication and multiple tunnel connections
 type MultiManager struct {
-	mu            sync.RWMutex
-	connections   map[string]*tunnelConn // keyed by tunnel ID
-	configPath    string
-	interfaceIdx  int32 // atomic counter for interface naming
+	mu           sync.RWMutex
+	session      *AuthSession
+	connections  map[string]*tunnelConn
+	configPath   string
+	interfaceIdx int32
 }
 
 // tunnelConn is internal connection state
 type tunnelConn struct {
 	TunnelConnection
-	wgInterface   *wireguard.Interface
-	tunnelClient  *wstunnel.Client
-	stopCh        chan struct{}
-	privateKey    wgtypes.Key
-	serverPubKey  string
+	wgInterface  *wireguard.Interface
+	tunnelClient *wstunnel.Client
+	stopCh       chan struct{}
+	privateKey   wgtypes.Key
+	serverPubKey string
 }
 
 // NewMultiManager creates a new multi-tunnel manager
@@ -62,47 +88,155 @@ func NewMultiManager(configPath string) *MultiManager {
 	}
 }
 
-// ConnectRequest for multi-tunnel connection
-type MultiConnectRequest struct {
-	TunnelID      string `json:"tunnel_id"`
-	ServerAddress string `json:"server_address"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
+// LoginRequest for authenticating with auth service
+type LoginRequest struct {
+	AuthURL  string `json:"auth_url"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
-// Connect connects to a specific tunnel
-func (m *MultiManager) Connect(req MultiConnectRequest) error {
+// Login authenticates with the auth service and gets available tunnels
+func (m *MultiManager) Login(req LoginRequest) (*AuthSession, error) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Call auth service login
+	loginReq := struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}{
+		Username: req.Username,
+		Password: req.Password,
+	}
+
+	jsonBody, _ := json.Marshal(loginReq)
+	apiURL := fmt.Sprintf("%s/api/auth/login", req.AuthURL)
+
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to auth service: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		if errResp.Error != "" {
+			return nil, fmt.Errorf("%s", errResp.Error)
+		}
+		return nil, fmt.Errorf("login failed: status %d", resp.StatusCode)
+	}
+
+	var loginResp struct {
+		Token    string       `json:"token"`
+		Expires  int64        `json:"expires"`
+		UserID   uint         `json:"user_id"`
+		Username string       `json:"username"`
+		IsAdmin  bool         `json:"is_admin"`
+		Tunnels  []TunnelInfo `json:"tunnels"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %v", err)
+	}
+
+	// Store session
+	m.session = &AuthSession{
+		AuthURL:  req.AuthURL,
+		Token:    loginResp.Token,
+		Expires:  loginResp.Expires,
+		UserID:   loginResp.UserID,
+		Username: loginResp.Username,
+		IsAdmin:  loginResp.IsAdmin,
+		Tunnels:  loginResp.Tunnels,
+		Password: req.Password, // Keep for tunnel login
+	}
+
+	return m.session, nil
+}
+
+// Logout clears the session and disconnects all tunnels
+func (m *MultiManager) Logout() {
+	m.DisconnectAll()
+	m.mu.Lock()
+	m.session = nil
+	m.mu.Unlock()
+}
+
+// GetSession returns the current auth session
+func (m *MultiManager) GetSession() *AuthSession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.session
+}
+
+// TunnelConnectRequest for connecting to a specific tunnel
+type TunnelConnectRequest struct {
+	TunnelID string `json:"tunnel_id"`
+}
+
+// Connect connects to a specific tunnel using the authenticated session
+func (m *MultiManager) Connect(req TunnelConnectRequest) error {
+	m.mu.Lock()
+
+	if m.session == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("not authenticated - login first")
+	}
+
+	// Find tunnel info
+	var tunnelInfo *TunnelInfo
+	for _, t := range m.session.Tunnels {
+		if t.ID == req.TunnelID {
+			tunnelInfo = &t
+			break
+		}
+	}
+
+	if tunnelInfo == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("tunnel %s not found or not accessible", req.TunnelID)
+	}
 
 	// Check if already connected
 	if conn, exists := m.connections[req.TunnelID]; exists {
 		if conn.State == StateConnected || conn.State == StateConnecting {
 			m.mu.Unlock()
-			return nil // Already connected/connecting
+			return nil
 		}
 	}
 
 	// Create new connection
 	conn := &tunnelConn{
 		TunnelConnection: TunnelConnection{
-			ID:            req.TunnelID,
-			ServerAddress: req.ServerAddress,
-			State:         StateConnecting,
+			ID:     tunnelInfo.ID,
+			Name:   tunnelInfo.Name,
+			URL:    tunnelInfo.URL,
+			Region: tunnelInfo.Region,
+			State:  StateConnecting,
 		},
 		stopCh: make(chan struct{}),
 	}
 
 	m.connections[req.TunnelID] = conn
+
+	// Get credentials for connection
+	username := m.session.Username
+	password := m.session.Password
+	internalURL := tunnelInfo.InternalURL
+
 	m.mu.Unlock()
 
 	// Start connection in background
-	go m.connectTunnel(conn, req.Username, req.Password)
+	go m.connectTunnel(conn, internalURL, username, password)
 
 	return nil
 }
 
 // connectTunnel handles the actual connection process
-func (m *MultiManager) connectTunnel(conn *tunnelConn, username, password string) {
+func (m *MultiManager) connectTunnel(conn *tunnelConn, internalURL, username, password string) {
 	// 1. Generate WireGuard keypair
 	privateKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
@@ -124,17 +258,17 @@ func (m *MultiManager) connectTunnel(conn *tunnelConn, username, password string
 	}
 
 	jsonBody, _ := json.Marshal(loginReq)
-	apiURL := fmt.Sprintf("http://%s/api/auth/login", conn.ServerAddress)
+	apiURL := fmt.Sprintf("%s/api/auth/login", internalURL)
 
 	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
-		m.setError(conn, fmt.Sprintf("login failed: %v", err))
+		m.setError(conn, fmt.Sprintf("tunnel login failed: %v", err))
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		m.setError(conn, fmt.Sprintf("login failed: status %d", resp.StatusCode))
+		m.setError(conn, fmt.Sprintf("tunnel login failed: status %d", resp.StatusCode))
 		return
 	}
 
@@ -224,7 +358,7 @@ func (m *MultiManager) connectTunnel(conn *tunnelConn, username, password string
 func (m *MultiManager) nextInterfaceName() string {
 	idx := atomic.AddInt32(&m.interfaceIdx, 1) - 1
 	if runtime.GOOS == "darwin" {
-		return fmt.Sprintf("utun%d", 10+idx) // Start from utun10 to avoid conflicts
+		return fmt.Sprintf("utun%d", 10+idx)
 	}
 	return fmt.Sprintf("wg%d", idx)
 }
@@ -273,7 +407,6 @@ func (m *MultiManager) Disconnect(tunnelID string) error {
 	// Signal stop
 	select {
 	case <-conn.stopCh:
-		// Already closed
 	default:
 		close(conn.stopCh)
 	}
@@ -315,6 +448,13 @@ func (m *MultiManager) GetStatus() MultiTunnelStatus {
 
 	status := MultiTunnelStatus{
 		Connections: make([]TunnelConnection, 0, len(m.connections)),
+	}
+
+	if m.session != nil {
+		status.Authenticated = true
+		status.AuthURL = m.session.AuthURL
+		status.Username = m.session.Username
+		status.Tunnels = m.session.Tunnels
 	}
 
 	for _, conn := range m.connections {
