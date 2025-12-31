@@ -1,5 +1,19 @@
 # Multi-Tunnel Architecture Deployment Guide
 
+## Upgrade from v0.5.4 to v0.6.1
+
+v0.6.1 introduces multi-tunnel architecture. You have two deployment options:
+
+### Option A: Keep Single Server (No Changes)
+
+Continue using `wire-socket-server` as before. No migration needed.
+
+### Option B: Deploy Multi-Tunnel Architecture
+
+Migrate to central auth + distributed tunnel nodes.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -28,28 +42,39 @@
 
 ## Components
 
-| Component | Description | Default Port |
-|-----------|-------------|--------------|
-| `wire-socket-auth` | Central authentication & user management | 8080 |
-| `wire-socket-tunnel` | Edge tunnel node (WireGuard + WebSocket) | 8080 (API), 443 (WS), 51820 (WG) |
-| `wsctl` (auth) | CLI for auth service management | - |
-| `wsctl` (tunnel) | CLI for tunnel node management | - |
+| Component | Binary | Description | Default Port |
+|-----------|--------|-------------|--------------|
+| Auth Service | `wire-socket-auth` | Central authentication & user management | 8080 |
+| Tunnel Service | `wire-socket-tunnel` | Edge tunnel node (WireGuard + WebSocket) | 8080 (API), 443 (WS), 51820 (WG) |
+| CLI Tool | `wsctl` | Auto-detects mode from config | - |
 
 ---
 
 ## 1. Deploy Auth Service
 
-### 1.1 Build
+### 1.1 Download Binary
 
 ```bash
-cd auth
-go build -o wire-socket-auth cmd/auth/main.go
-go build -o wsctl cmd/wsctl/main.go
+# From GitHub Release v0.6.1
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wire-socket-auth-linux-amd64
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wsctl-linux-amd64
+
+chmod +x wire-socket-auth-linux-amd64 wsctl-linux-amd64
+mv wire-socket-auth-linux-amd64 /opt/wiresocket/auth/wire-socket-auth
+mv wsctl-linux-amd64 /opt/wiresocket/auth/wsctl
+```
+
+Or build from source:
+
+```bash
+cd server
+go build -o wire-socket-auth ./cmd/auth
+go build -o wsctl ./cmd/wsctl
 ```
 
 ### 1.2 Configure
 
-Create `config.yaml`:
+Create `/opt/wiresocket/auth/config.yaml`:
 
 ```yaml
 server:
@@ -66,13 +91,12 @@ auth:
 ### 1.3 Initialize Database
 
 ```bash
+cd /opt/wiresocket/auth
 sudo ./wire-socket-auth -init-db
 # Creates admin/admin123 user
 ```
 
 ### 1.4 Run as Service
-
-**systemd (Linux):**
 
 ```bash
 cat > /etc/systemd/system/wire-socket-auth.service << 'EOF'
@@ -108,12 +132,23 @@ Access: `http://auth-server:8080/admin`
 
 ## 2. Deploy Tunnel Service
 
-### 2.1 Build
+### 2.1 Download Binary
 
 ```bash
-cd tunnel
-go build -o wire-socket-tunnel cmd/tunnel/main.go
-go build -o wsctl cmd/wsctl/main.go
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wire-socket-tunnel-linux-amd64
+wget https://github.com/k0ngk0ng/wire-socket/releases/download/v0.6.1/wsctl-linux-amd64
+
+chmod +x wire-socket-tunnel-linux-amd64 wsctl-linux-amd64
+mv wire-socket-tunnel-linux-amd64 /opt/wiresocket/tunnel/wire-socket-tunnel
+mv wsctl-linux-amd64 /opt/wiresocket/tunnel/wsctl
+```
+
+Or build from source:
+
+```bash
+cd server
+go build -o wire-socket-tunnel ./cmd/tunnel
+go build -o wsctl ./cmd/wsctl
 ```
 
 ### 2.2 Generate WireGuard Keys
@@ -127,7 +162,7 @@ go build -o wsctl cmd/wsctl/main.go
 
 ### 2.3 Configure
 
-Create `config.yaml`:
+Create `/opt/wiresocket/tunnel/config.yaml`:
 
 ```yaml
 tunnel:
@@ -172,11 +207,7 @@ ws_tunnel:
 # Output: Successfully registered with auth service
 ```
 
-This registers the tunnel node with the auth service. The auth service will issue a token that the tunnel uses for future API calls.
-
 ### 2.5 Run as Service
-
-**systemd (Linux):**
 
 ```bash
 cat > /etc/systemd/system/wire-socket-tunnel.service << 'EOF'
@@ -215,21 +246,15 @@ Access: `http://tunnel-server:8080/admin`
 ### Auth Service
 
 ```bash
-# API only
 ufw allow 8080/tcp
 ```
 
 ### Tunnel Service
 
 ```bash
-# API (internal)
-ufw allow 8080/tcp
-
-# WebSocket tunnel
-ufw allow 443/tcp
-
-# WireGuard UDP
-ufw allow 51820/udp
+ufw allow 8080/tcp    # API (internal)
+ufw allow 443/tcp     # WebSocket tunnel
+ufw allow 51820/udp   # WireGuard UDP
 ```
 
 ---
@@ -255,10 +280,10 @@ Each tunnel node needs a **unique subnet** to avoid IP conflicts:
 2. Click on a user → "Manage Tunnel Access"
 3. Select which tunnels the user can access
 
-### Via wsctl CLI
+### Via wsctl CLI (on auth server)
 
 ```bash
-cd auth
+cd /opt/wiresocket/auth
 
 # List users
 ./wsctl user list
@@ -268,45 +293,81 @@ cd auth
 
 # Set user's tunnel access (user ID 1 can access hk-01 and jp-01)
 ./wsctl user set-tunnels 1 hk-01,jp-01
+
+# List registered tunnels
+./wsctl tunnel list
+```
+
+### Via wsctl CLI (on tunnel node)
+
+```bash
+cd /opt/wiresocket/tunnel
+
+# List routes
+./wsctl route list
+
+# List NAT rules
+./wsctl nat list
+
+# List connected peers
+./wsctl peer list
 ```
 
 ---
 
-## 6. Migration from Single Server
-
-If you're migrating from the old single `wire-socket-server`:
+## 6. Migration from v0.5.4 Single Server
 
 ### 6.1 Export Users
 
 ```bash
-# On old server
+# On old v0.5.4 server
 sqlite3 vpn.db "SELECT username, email, password_hash, is_admin FROM users" > users.csv
 ```
 
-### 6.2 Import to Auth Service
+### 6.2 Deploy Auth Service
+
+Follow Section 1 above to deploy auth service.
+
+### 6.3 Import Users
 
 ```bash
 # On auth server
-cd auth
+cd /opt/wiresocket/auth
 ./wsctl user create <username> <email> <password> [--admin]
 ```
 
 Or use the admin UI to create users.
 
-### 6.3 Deploy Tunnel Node
+### 6.4 Convert Old Server to Tunnel Node
 
-The old server becomes a tunnel node:
+Your old v0.5.4 server becomes a tunnel node:
 
-1. Keep the same WireGuard keys
-2. Create tunnel config with same subnet
-3. Register with auth service
-4. Update client connection settings
+1. Stop the old server:
+   ```bash
+   systemctl stop wire-socket-server
+   ```
+
+2. Keep the same WireGuard keys from old config
+
+3. Create tunnel config with same subnet
+
+4. Register with auth service:
+   ```bash
+   ./wire-socket-tunnel -register
+   ```
+
+5. Start tunnel service:
+   ```bash
+   systemctl start wire-socket-tunnel
+   ```
+
+6. Update client connection settings to point to the tunnel
 
 ---
 
 ## 7. Client Configuration
 
-Clients can now connect to multiple tunnels simultaneously via the **Settings → Tunnels** tab.
+Clients v0.6.1+ can connect to multiple tunnels simultaneously via **Settings → Tunnels**.
 
 Each tunnel connection requires:
 - Tunnel ID (e.g., `hk-01`)
@@ -330,17 +391,15 @@ journalctl -u wire-socket-auth -f
 journalctl -u wire-socket-tunnel -f
 ```
 
-### Check WireGuard Peers
+### Check WireGuard Peers (on tunnel node)
 
 ```bash
-# On tunnel node
 ./wsctl peer list
 ```
 
-### Check Registered Tunnels
+### Check Registered Tunnels (on auth server)
 
 ```bash
-# On auth server
 ./wsctl tunnel list
 ```
 
