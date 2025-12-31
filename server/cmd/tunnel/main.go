@@ -55,9 +55,9 @@ type Config struct {
 		TLSKey     string `yaml:"tls_key"`
 	} `yaml:"ws_tunnel"`
 	PeerCleanup struct {
-		Enabled  bool `yaml:"enabled"`  // Enable peer cleanup (default: true)
-		Timeout  int  `yaml:"timeout"`  // Seconds before inactive peer is removed (default: 180)
-		Interval int  `yaml:"interval"` // Seconds between cleanup checks (default: 30)
+		Enabled  *bool `yaml:"enabled"`  // Enable peer cleanup (default: true)
+		Timeout  int   `yaml:"timeout"`  // Seconds before inactive peer is removed (default: 180)
+		Interval int   `yaml:"interval"` // Seconds between cleanup checks (default: 30)
 	} `yaml:"peer_cleanup"`
 }
 
@@ -167,7 +167,8 @@ func main() {
 	router.SetupRoutes(engine)
 
 	// Start peer cleanup service (enabled by default)
-	if config.PeerCleanup.Enabled || config.PeerCleanup.Timeout == 0 {
+	// nil = not configured (default true), false = explicitly disabled
+	if config.PeerCleanup.Enabled == nil || *config.PeerCleanup.Enabled {
 		cleanupConfig := tunnelservice.CleanupConfig{
 			Timeout:  time.Duration(config.PeerCleanup.Timeout) * time.Second,
 			Interval: time.Duration(config.PeerCleanup.Interval) * time.Second,
