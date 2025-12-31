@@ -1,0 +1,33 @@
+tunnel:
+  id: "hk-01"                    # Unique tunnel ID
+  name: "Hong Kong"              # Display name
+  region: "asia"                 # Region code
+  token: "tunnel-secret-token"   # Secret for auth service communication
+  master_token: "master-token"   # For initial registration (from auth config)
+
+auth:
+  url: "http://localhost:8080"   # Auth service URL
+
+server:
+  address: ":8081"               # API listen address
+
+database:
+  path: "./tunnel.db"
+
+wireguard:
+  device_name: "wg0"
+  mode: "userspace"              # "userspace" or "kernel"
+  listen_port: 51820
+  subnet: "10.0.0.0/24"
+  dns: "1.1.1.1"
+  endpoint: "your-server-ip:51820"
+  private_key: ""                # Generate with: ./wire-socket-tunnel -gen-key
+  public_key: ""
+
+ws_tunnel:
+  enabled: true
+  listen_addr: ":443"
+  public_host: "hk.vpn.example.com"
+  path: "/"
+  # tls_cert: "/path/to/cert.pem"
+  # tls_key: "/path/to/key.pem"

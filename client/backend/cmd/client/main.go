@@ -29,6 +29,7 @@ const (
 type Program struct {
 	apiServer *api.Server
 	connMgr   *connection.Manager
+	multiMgr  *connection.MultiManager
 }
 
 func (p *Program) Start(s service.Service) error {
@@ -82,6 +83,18 @@ func (p *Program) run() {
 		return
 	}
 
+	// Initialize multi-tunnel manager
+	configPath := ""
+	switch runtime.GOOS {
+	case "darwin":
+		configPath = filepath.Join(os.Getenv("HOME"), ".config", "wiresocket")
+	case "linux":
+		configPath = filepath.Join(os.Getenv("HOME"), ".config", "wiresocket")
+	case "windows":
+		configPath = filepath.Join(os.Getenv("APPDATA"), "WireSocket")
+	}
+	p.multiMgr = connection.NewMultiManager(configPath)
+
 	// Find available port
 	port, err := findAvailablePort()
 	if err != nil {
@@ -95,9 +108,9 @@ func (p *Program) run() {
 		// Continue anyway, frontend will try default port
 	}
 
-	// Start local API server
+	// Start local API server with multi-tunnel support
 	addr := fmt.Sprintf(":%d", port)
-	p.apiServer = api.NewServer(p.connMgr, addr)
+	p.apiServer = api.NewServerWithMulti(p.connMgr, p.multiMgr, addr)
 	if err := p.apiServer.Start(); err != nil {
 		logger.Errorf("Failed to start API server: %v", err)
 		return
@@ -113,6 +126,11 @@ func (p *Program) Stop(s service.Service) error {
 	// Stop API server
 	if p.apiServer != nil {
 		p.apiServer.Stop()
+	}
+
+	// Disconnect all multi-tunnel connections
+	if p.multiMgr != nil {
+		p.multiMgr.DisconnectAll()
 	}
 
 	// Disconnect if connected
