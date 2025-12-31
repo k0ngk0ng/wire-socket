@@ -455,6 +455,40 @@
       text-decoration: line-through;
     }
 
+    .route-cidr {
+      font-size: 13px;
+      color: #333;
+      font-family: monospace;
+    }
+
+    .tunnel-group {
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .tunnel-group:last-child {
+      border-bottom: none;
+    }
+
+    .tunnel-group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: #f5f5f5;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .tunnel-name {
+      color: #333;
+    }
+
+    .tunnel-ip {
+      color: #999;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
     .success-message {
       background: #d4edda;
       color: #155724;
@@ -590,7 +624,7 @@
             <!-- Routes Tab -->
             <div id="tab-routes" class="tab-pane active">
               <p style="font-size: 13px; color: #666; margin: 0 0 10px 0;">
-                Uncheck routes to exclude them from VPN tunnel.
+                Routes configured for each connected tunnel.
               </p>
               <div style="margin-bottom: 10px;">
                 <input type="text" id="routeSearch" placeholder="Search CIDR..." oninput="filterRoutes()" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;">
@@ -942,6 +976,7 @@
     // Settings modal functions
     let currentRoutes = [];
     let excludedRoutes = [];
+    let tunnelConnections = [];  // Store tunnel connections with routes
     let currentToken = null;
 
     function switchTab(event, tabName) {
@@ -985,15 +1020,66 @@
 
     async function loadRouteSettings() {
       try {
+        // Try to load from multi-tunnel API first
+        const tunnelsResult = await window.electronAPI.getTunnelsStatus();
+        if (tunnelsResult.success && tunnelsResult.data.connections && tunnelsResult.data.connections.length > 0) {
+          tunnelConnections = tunnelsResult.data.connections.filter(c => c.state === 'connected');
+          renderTunnelRouteList();
+          return;
+        }
+
+        // Fallback to single connection mode
         const result = await window.electronAPI.getRouteSettings();
         if (result.success) {
           currentRoutes = result.data.available_routes || [];
           excludedRoutes = result.data.excluded_routes || [];
+          tunnelConnections = [];
           renderRouteList();
         }
       } catch (e) {
         console.error('Failed to load route settings:', e);
       }
+    }
+
+    function renderTunnelRouteList(searchTerm = '') {
+      const routeList = document.getElementById('routeList');
+
+      if (tunnelConnections.length === 0) {
+        routeList.innerHTML = '<div class="empty-state">Connect to a tunnel to see available routes</div>';
+        return;
+      }
+
+      let html = '';
+      tunnelConnections.forEach(conn => {
+        const routes = conn.available_routes || [];
+        const filteredRoutes = searchTerm
+          ? routes.filter(r => r.toLowerCase().includes(searchTerm.toLowerCase()))
+          : routes;
+
+        html += `
+          <div class="tunnel-group">
+            <div class="tunnel-group-header">
+              <span class="tunnel-name">${conn.name || conn.id}</span>
+              <span class="tunnel-ip">${conn.assigned_ip || ''}</span>
+            </div>
+        `;
+
+        if (filteredRoutes.length === 0) {
+          html += '<div class="empty-state" style="padding: 10px;">No routes configured</div>';
+        } else {
+          filteredRoutes.forEach((route, index) => {
+            html += `
+              <div class="route-item">
+                <span class="route-cidr">${route}</span>
+              </div>
+            `;
+          });
+        }
+
+        html += '</div>';
+      });
+
+      routeList.innerHTML = html;
     }
 
     function renderRouteList(searchTerm = '') {
@@ -1030,7 +1116,11 @@
 
     function filterRoutes() {
       const searchTerm = document.getElementById('routeSearch').value;
-      renderRouteList(searchTerm);
+      if (tunnelConnections.length > 0) {
+        renderTunnelRouteList(searchTerm);
+      } else {
+        renderRouteList(searchTerm);
+      }
     }
 
     async function toggleRoute(route, isEnabled) {

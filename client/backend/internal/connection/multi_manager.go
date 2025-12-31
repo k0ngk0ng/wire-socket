@@ -38,16 +38,17 @@ type AuthSession struct {
 
 // TunnelConnection represents a single tunnel connection
 type TunnelConnection struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	URL         string    `json:"url"`
-	Region      string    `json:"region"`
-	State       State     `json:"state"`
-	AssignedIP  string    `json:"assigned_ip,omitempty"`
-	ConnectedAt time.Time `json:"connected_at,omitempty"`
-	RxBytes     uint64    `json:"rx_bytes"`
-	TxBytes     uint64    `json:"tx_bytes"`
-	Error       string    `json:"error,omitempty"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	URL             string    `json:"url"`
+	Region          string    `json:"region"`
+	State           State     `json:"state"`
+	AssignedIP      string    `json:"assigned_ip,omitempty"`
+	ConnectedAt     time.Time `json:"connected_at,omitempty"`
+	RxBytes         uint64    `json:"rx_bytes"`
+	TxBytes         uint64    `json:"tx_bytes"`
+	Error           string    `json:"error,omitempty"`
+	AvailableRoutes []string  `json:"available_routes,omitempty"`
 }
 
 // MultiTunnelStatus represents status of all tunnel connections
@@ -73,11 +74,12 @@ type MultiManager struct {
 // tunnelConn is internal connection state
 type tunnelConn struct {
 	TunnelConnection
-	wgInterface  *wireguard.Interface
-	tunnelClient *wstunnel.Client
-	stopCh       chan struct{}
-	privateKey   wgtypes.Key
-	serverPubKey string
+	wgInterface     *wireguard.Interface
+	tunnelClient    *wstunnel.Client
+	stopCh          chan struct{}
+	privateKey      wgtypes.Key
+	serverPubKey    string
+	availableRoutes []string // Routes from tunnel server
 }
 
 // NewMultiManager creates a new multi-tunnel manager
@@ -293,6 +295,7 @@ func (m *MultiManager) connectTunnel(conn *tunnelConn, internalURL, username, pa
 	conn.AssignedIP = loginResp.Interface.Address
 	conn.URL = loginResp.TunnelURL
 	conn.serverPubKey = loginResp.Peer.PublicKey
+	conn.availableRoutes = loginResp.Peer.AllowedIPs
 
 	// 3. Create WireGuard interface
 	interfaceName := m.nextInterfaceName()
@@ -458,7 +461,9 @@ func (m *MultiManager) GetStatus() MultiTunnelStatus {
 	}
 
 	for _, conn := range m.connections {
-		status.Connections = append(status.Connections, conn.TunnelConnection)
+		tc := conn.TunnelConnection
+		tc.AvailableRoutes = conn.availableRoutes
+		status.Connections = append(status.Connections, tc)
 		status.TotalRx += conn.RxBytes
 		status.TotalTx += conn.TxBytes
 	}
@@ -473,6 +478,7 @@ func (m *MultiManager) GetConnection(tunnelID string) *TunnelConnection {
 
 	if conn, exists := m.connections[tunnelID]; exists {
 		c := conn.TunnelConnection
+		c.AvailableRoutes = conn.availableRoutes
 		return &c
 	}
 	return nil

@@ -119,7 +119,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Get routes
 	routes, _ := h.db.GetEnabledRoutes()
 	if routes == nil {
-		routes = []string{"0.0.0.0/0"}
+		routes = []string{}
 	}
 
 	// Return config
