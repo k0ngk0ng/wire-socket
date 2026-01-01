@@ -543,47 +543,69 @@
       <div class="loading-subtext">This may require administrator permission</div>
     </div>
 
-    <!-- Main View (Multi-Auth Interface) -->
-    <div id="mainView" class="hidden">
-      <!-- Add Server Form -->
-      <div class="status-box" style="margin-bottom: 20px;">
-        <h3 style="margin: 0 0 15px 0; font-size: 14px; color: #666;">Add Server</h3>
-        <div class="form-group" style="margin-bottom: 10px;">
-          <input type="text" id="authUrl" placeholder="Server URL (e.g., https://vpn.example.com)">
-        </div>
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <input type="text" id="authUsername" placeholder="Username" style="flex: 1;">
-          <input type="password" id="authPassword" placeholder="Password" style="flex: 1;">
-        </div>
-        <button class="btn btn-primary btn-small" id="addServerBtn" onclick="addServer()">
-          Login
-        </button>
+    <!-- Login Form -->
+    <div id="loginForm" class="hidden">
+      <div class="form-group">
+        <label for="serverAddress">Server Address</label>
+        <input type="text" id="serverAddress" placeholder="https://vpn.example.com">
       </div>
-
-      <!-- Servers & Tunnels List -->
-      <div id="serversSection">
-        <div id="serversList">
-          <div class="empty-state" style="padding: 30px; text-align: center; color: #999;">
-            No servers connected. Add a server above to get started.
-          </div>
-        </div>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="Enter your username">
       </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter your password">
+      </div>
+      <div class="checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="rememberMe">
+          Remember credentials
+        </label>
+      </div>
+      <button class="btn btn-primary" id="connectBtn" onclick="connect()">
+        Connect to VPN
+      </button>
+      <div id="errorMessage" class="error-message hidden"></div>
+    </div>
 
-      <!-- Traffic Stats (shown when connected) -->
-      <div id="trafficStats" class="hidden" style="margin-top: 15px;">
+    <!-- Connected View -->
+    <div id="connectedView" class="hidden">
+      <div class="status-box">
+        <div class="status-item">
+          <span class="status-label">Server</span>
+          <span class="status-value" id="connectedServer">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Your IP</span>
+          <span class="status-value" id="assignedIP">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Connected Since</span>
+          <span class="status-value" id="connectedSince">-</span>
+        </div>
         <div class="traffic-stats">
           <div class="traffic-card">
             <div class="traffic-label">Download</div>
-            <div class="traffic-value" id="totalRxBytes">0 B</div>
+            <div class="traffic-value" id="rxBytes">0 B</div>
           </div>
           <div class="traffic-card">
             <div class="traffic-label">Upload</div>
-            <div class="traffic-value" id="totalTxBytes">0 B</div>
+            <div class="traffic-value" id="txBytes">0 B</div>
           </div>
         </div>
       </div>
 
-      <div id="errorMessage" class="error-message hidden"></div>
+      <!-- Tunnels Section -->
+      <div id="tunnelsSection" class="status-box" style="margin-top: 15px;">
+        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Available Tunnels</h3>
+        <div id="tunnelsList" class="route-list" style="max-height: 150px;"></div>
+      </div>
+
+      <button class="btn btn-danger" style="margin-top: 20px;" onclick="disconnect()">
+        Disconnect
+      </button>
+      <div id="connectedError" class="error-message hidden"></div>
     </div>
 
     <!-- Settings Modal -->
@@ -639,15 +661,18 @@
   </div>
 
   <script>
+    // DOM Elements
     const backendIndicator = document.getElementById('backendIndicator');
     const statusText = document.getElementById('statusText');
     const loadingView = document.getElementById('loadingView');
-    const mainView = document.getElementById('mainView');
+    const loginForm = document.getElementById('loginForm');
+    const connectedView = document.getElementById('connectedView');
     const errorMessage = document.getElementById('errorMessage');
+    const connectBtn = document.getElementById('connectBtn');
 
     let statusCheckInterval = null;
     let backendReady = false;
-    let authSessions = [];
+    let currentSession = null;
     let tunnelConnections = [];
 
     // Listen for service status from main process
@@ -659,13 +684,38 @@
       });
     }
 
+    // Load saved credentials
+    function loadSavedCredentials() {
+      const savedServer = localStorage.getItem('wiresocket_server');
+      const savedUsername = localStorage.getItem('wiresocket_username');
+      const savedPassword = localStorage.getItem('wiresocket_password');
+      const savedRemember = localStorage.getItem('wiresocket_remember') === 'true';
+
+      if (savedServer) document.getElementById('serverAddress').value = savedServer;
+      if (savedUsername) document.getElementById('username').value = savedUsername;
+      if (savedPassword) document.getElementById('password').value = savedPassword;
+      document.getElementById('rememberMe').checked = savedRemember;
+    }
+
+    // Save credentials
+    function saveCredentials(server, username, password) {
+      const remember = document.getElementById('rememberMe').checked;
+      localStorage.setItem('wiresocket_server', server);
+      localStorage.setItem('wiresocket_username', username);
+      localStorage.setItem('wiresocket_remember', remember.toString());
+      if (remember) {
+        localStorage.setItem('wiresocket_password', password);
+      } else {
+        localStorage.removeItem('wiresocket_password');
+      }
+    }
+
     async function waitForBackend() {
       backendIndicator.classList.add('connecting');
       backendIndicator.classList.remove('online');
 
-      // Poll for backend availability
       let attempts = 0;
-      const maxAttempts = 30; // 30 seconds timeout
+      const maxAttempts = 30;
 
       const checkBackend = async () => {
         try {
@@ -682,7 +732,6 @@
         if (attempts < maxAttempts) {
           setTimeout(checkBackend, 1000);
         } else {
-          // Timeout - show error
           loadingView.innerHTML = `
             <div style="color: #e74c3c; font-size: 48px; margin-bottom: 20px;">⚠️</div>
             <div class="loading-text" style="color: #e74c3c;">Failed to start VPN service</div>
@@ -699,125 +748,246 @@
       backendIndicator.classList.remove('connecting');
       backendIndicator.classList.add('online');
       loadingView.classList.add('hidden');
-      mainView.classList.remove('hidden');
 
-      // Load current status
-      refreshStatus();
-      startStatusCheck();
+      // Load saved credentials
+      loadSavedCredentials();
+
+      // Check current status
+      checkStatus();
+    }
+
+    async function connect() {
+      const serverAddress = document.getElementById('serverAddress').value.trim();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!serverAddress || !username || !password) {
+        showError('Please fill in all fields');
+        return;
+      }
+
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Connecting...';
+      hideError();
+
+      try {
+        // First, login to get tunnels
+        const loginResult = await window.electronAPI.authLogin({
+          auth_url: serverAddress,
+          username: username,
+          password: password
+        });
+
+        if (!loginResult.success) {
+          showError(loginResult.error || 'Login failed');
+          connectBtn.disabled = false;
+          connectBtn.textContent = 'Connect to VPN';
+          return;
+        }
+
+        currentSession = loginResult.data;
+        saveCredentials(serverAddress, username, password);
+
+        // Auto-connect to first tunnel if available
+        if (currentSession.tunnels && currentSession.tunnels.length > 0) {
+          const firstTunnel = currentSession.tunnels[0];
+          const connectResult = await window.electronAPI.connectTunnel({ tunnel_id: firstTunnel.id });
+          if (!connectResult.success) {
+            console.log('Auto-connect failed:', connectResult.error);
+          }
+        }
+
+        // Show connected view
+        showConnectedView();
+        startStatusCheck();
+
+      } catch (e) {
+        showError('Connection failed: ' + e.message);
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect to VPN';
+      }
+    }
+
+    async function disconnect() {
+      try {
+        // Disconnect all tunnels
+        await window.electronAPI.disconnectAllTunnels();
+
+        // Logout from all servers
+        if (currentSession) {
+          await window.electronAPI.authLogout({ auth_url: localStorage.getItem('wiresocket_server') });
+        }
+
+        currentSession = null;
+        tunnelConnections = [];
+        stopStatusCheck();
+        showLoginForm();
+
+      } catch (e) {
+        console.error('Disconnect failed:', e);
+        showConnectedError('Disconnect failed: ' + e.message);
+      }
+    }
+
+    async function checkStatus() {
+      if (!backendReady) return;
+
+      try {
+        const result = await window.electronAPI.getTunnelsStatus();
+
+        if (result.success) {
+          const sessions = result.data.sessions || [];
+          tunnelConnections = result.data.connections || [];
+
+          if (sessions.length > 0) {
+            currentSession = sessions[0];
+            showConnectedView();
+            updateConnectedInfo(result.data);
+            startStatusCheck();
+          } else {
+            showLoginForm();
+          }
+        } else {
+          showLoginForm();
+        }
+      } catch (e) {
+        console.error('Status check failed:', e);
+        showLoginForm();
+      }
+    }
+
+    function showLoginForm() {
+      loginForm.classList.remove('hidden');
+      connectedView.classList.add('hidden');
+      statusText.textContent = '';
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect to VPN';
+
+      if (window.electronAPI && window.electronAPI.updateTrayStatus) {
+        window.electronAPI.updateTrayStatus(false);
+      }
+    }
+
+    function showConnectedView() {
+      loginForm.classList.add('hidden');
+      connectedView.classList.remove('hidden');
+    }
+
+    function updateConnectedInfo(data) {
+      const sessions = data.sessions || [];
+      const connections = data.connections || [];
+      const connectedTunnels = connections.filter(c => c.state === 'connected');
+
+      // Update status text
+      if (connectedTunnels.length > 0) {
+        statusText.textContent = 'Connected';
+        statusText.style.color = '#2ecc71';
+        if (window.electronAPI && window.electronAPI.updateTrayStatus) {
+          window.electronAPI.updateTrayStatus(true);
+        }
+      } else {
+        statusText.textContent = 'Logged in';
+        statusText.style.color = '#f39c12';
+        if (window.electronAPI && window.electronAPI.updateTrayStatus) {
+          window.electronAPI.updateTrayStatus(false);
+        }
+      }
+
+      // Update server name
+      if (sessions.length > 0) {
+        const session = sessions[0];
+        document.getElementById('connectedServer').textContent = getHostname(session.auth_url);
+      }
+
+      // Update IP and stats from first connected tunnel
+      if (connectedTunnels.length > 0) {
+        const conn = connectedTunnels[0];
+        document.getElementById('assignedIP').textContent = conn.assigned_ip || '-';
+        if (conn.connected_at) {
+          document.getElementById('connectedSince').textContent = new Date(conn.connected_at).toLocaleString();
+        }
+      } else {
+        document.getElementById('assignedIP').textContent = '-';
+        document.getElementById('connectedSince').textContent = '-';
+      }
+
+      // Update traffic stats
+      document.getElementById('rxBytes').textContent = formatBytes(data.total_rx || 0);
+      document.getElementById('txBytes').textContent = formatBytes(data.total_tx || 0);
+
+      // Update tunnels list
+      renderTunnelsList(sessions, connections);
+    }
+
+    function renderTunnelsList(sessions, connections) {
+      const tunnelsList = document.getElementById('tunnelsList');
+
+      if (!sessions || sessions.length === 0) {
+        tunnelsList.innerHTML = '<div class="empty-state">No tunnels available</div>';
+        return;
+      }
+
+      let html = '';
+      sessions.forEach(session => {
+        const tunnels = session.tunnels || [];
+        tunnels.forEach(tunnel => {
+          const conn = connections.find(c => c.id === tunnel.id);
+          const isConnected = conn && conn.state === 'connected';
+          const isConnecting = conn && conn.state === 'connecting';
+          const statusIcon = isConnected ? '🟢' : isConnecting ? '🟡' : '⚪';
+
+          html += `
+            <div class="route-item" style="justify-content: space-between; padding: 8px 12px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>${statusIcon}</span>
+                <div>
+                  <div style="font-weight: 500; font-size: 13px;">${tunnel.name || tunnel.id}</div>
+                  <div style="font-size: 11px; color: #999;">${tunnel.region || ''}</div>
+                </div>
+              </div>
+              ${isConnected || isConnecting
+                ? `<button class="btn btn-secondary btn-small" style="padding: 4px 10px; font-size: 11px;" onclick="disconnectTunnel('${tunnel.id}')">Disconnect</button>`
+                : `<button class="btn btn-primary btn-small" style="padding: 4px 10px; font-size: 11px;" onclick="connectTunnel('${tunnel.id}')">Connect</button>`
+              }
+            </div>
+          `;
+        });
+      });
+
+      tunnelsList.innerHTML = html || '<div class="empty-state">No tunnels available</div>';
+    }
+
+    async function connectTunnel(tunnelId) {
+      try {
+        const result = await window.electronAPI.connectTunnel({ tunnel_id: tunnelId });
+        if (!result.success) {
+          showConnectedError(result.error || 'Failed to connect tunnel');
+        }
+        await refreshStatus();
+      } catch (e) {
+        showConnectedError('Failed to connect: ' + e.message);
+      }
+    }
+
+    async function disconnectTunnel(tunnelId) {
+      try {
+        await window.electronAPI.disconnectTunnel(tunnelId);
+        await refreshStatus();
+      } catch (e) {
+        showConnectedError('Failed to disconnect: ' + e.message);
+      }
     }
 
     async function refreshStatus() {
       try {
         const result = await window.electronAPI.getTunnelsStatus();
         if (result.success) {
-          authSessions = result.data.sessions || [];
           tunnelConnections = result.data.connections || [];
-          renderServersList();
-          updateTrafficStats(result.data.total_rx || 0, result.data.total_tx || 0);
-          updateStatusText();
+          updateConnectedInfo(result.data);
         }
       } catch (e) {
         console.error('Failed to refresh status:', e);
       }
-    }
-
-    function updateStatusText() {
-      const connectedCount = tunnelConnections.filter(c => c.state === 'connected').length;
-      if (connectedCount > 0) {
-        statusText.textContent = `${connectedCount} tunnel${connectedCount > 1 ? 's' : ''} connected`;
-        statusText.style.color = '#2ecc71';
-        // Update tray
-        if (window.electronAPI && window.electronAPI.updateTrayStatus) {
-          window.electronAPI.updateTrayStatus(true);
-        }
-      } else if (authSessions.length > 0) {
-        statusText.textContent = `${authSessions.length} server${authSessions.length > 1 ? 's' : ''} logged in`;
-        statusText.style.color = '#666';
-        if (window.electronAPI && window.electronAPI.updateTrayStatus) {
-          window.electronAPI.updateTrayStatus(false);
-        }
-      } else {
-        statusText.textContent = '';
-        if (window.electronAPI && window.electronAPI.updateTrayStatus) {
-          window.electronAPI.updateTrayStatus(false);
-        }
-      }
-    }
-
-    function updateTrafficStats(rx, tx) {
-      const trafficStats = document.getElementById('trafficStats');
-      if (rx > 0 || tx > 0) {
-        trafficStats.classList.remove('hidden');
-        document.getElementById('totalRxBytes').textContent = formatBytes(rx);
-        document.getElementById('totalTxBytes').textContent = formatBytes(tx);
-      } else {
-        trafficStats.classList.add('hidden');
-      }
-    }
-
-    function renderServersList() {
-      const serversList = document.getElementById('serversList');
-
-      if (authSessions.length === 0) {
-        serversList.innerHTML = `
-          <div class="empty-state" style="padding: 30px; text-align: center; color: #999;">
-            No servers connected. Add a server above to get started.
-          </div>
-        `;
-        return;
-      }
-
-      let html = '';
-      authSessions.forEach(session => {
-        const sessionTunnels = session.tunnels || [];
-
-        html += `
-          <div class="status-box" style="margin-bottom: 15px; padding: 15px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-              <div>
-                <strong>${session.username}</strong>
-                <span style="color: #999; font-size: 12px;">@${getHostname(session.auth_url)}</span>
-              </div>
-              <button class="btn btn-secondary btn-small" style="padding: 4px 10px; font-size: 11px;" onclick="logoutFromServer('${escapeQuotes(session.auth_url)}')">
-                Logout
-              </button>
-            </div>
-        `;
-
-        if (sessionTunnels.length === 0) {
-          html += '<div style="color: #999; font-size: 13px; padding: 10px 0;">No tunnels available</div>';
-        } else {
-          html += '<div class="route-list" style="border: none; max-height: none;">';
-          sessionTunnels.forEach(tunnel => {
-            const conn = tunnelConnections.find(c => c.id === tunnel.id);
-            const isConnected = conn && conn.state === 'connected';
-            const isConnecting = conn && conn.state === 'connecting';
-            const statusIcon = isConnected ? '🟢' : isConnecting ? '🟡' : '⚪';
-            const statusText = isConnected ? conn.assigned_ip : isConnecting ? 'Connecting...' : '';
-
-            html += `
-              <div class="route-item" style="justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span>${statusIcon}</span>
-                  <div>
-                    <div style="font-weight: 500; font-size: 13px;">${tunnel.name || tunnel.id}</div>
-                    <div style="font-size: 11px; color: #999;">${tunnel.region || ''} ${statusText}</div>
-                  </div>
-                </div>
-                ${isConnected || isConnecting
-                  ? `<button class="btn btn-secondary btn-small" style="padding: 4px 10px; font-size: 11px;" onclick="disconnectTunnel('${tunnel.id}')">Disconnect</button>`
-                  : `<button class="btn btn-primary btn-small" style="padding: 4px 10px; font-size: 11px;" onclick="connectTunnel('${tunnel.id}')">Connect</button>`
-                }
-              </div>
-            `;
-          });
-          html += '</div>';
-        }
-
-        html += '</div>';
-      });
-
-      serversList.innerHTML = html;
     }
 
     function getHostname(url) {
@@ -825,80 +995,6 @@
         return new URL(url).hostname;
       } catch {
         return url;
-      }
-    }
-
-    function escapeQuotes(str) {
-      return str.replace(/'/g, "\\'");
-    }
-
-    async function addServer() {
-      const authUrl = document.getElementById('authUrl').value.trim();
-      const username = document.getElementById('authUsername').value.trim();
-      const password = document.getElementById('authPassword').value;
-
-      if (!authUrl || !username || !password) {
-        showError('Please fill in all fields');
-        return;
-      }
-
-      const btn = document.getElementById('addServerBtn');
-      btn.disabled = true;
-      btn.textContent = 'Logging in...';
-
-      try {
-        const result = await window.electronAPI.authLogin({
-          auth_url: authUrl,
-          username: username,
-          password: password
-        });
-
-        if (result.success) {
-          hideError();
-          // Clear form
-          document.getElementById('authUrl').value = '';
-          document.getElementById('authUsername').value = '';
-          document.getElementById('authPassword').value = '';
-          // Refresh list
-          refreshStatus();
-        } else {
-          showError(result.error || 'Login failed');
-        }
-      } catch (e) {
-        showError('Login failed: ' + e.message);
-      }
-
-      btn.disabled = false;
-      btn.textContent = 'Login';
-    }
-
-    async function logoutFromServer(authUrl) {
-      try {
-        await window.electronAPI.authLogout({ auth_url: authUrl });
-        refreshStatus();
-      } catch (e) {
-        showError('Logout failed: ' + e.message);
-      }
-    }
-
-    async function connectTunnel(tunnelId) {
-      try {
-        const result = await window.electronAPI.connectTunnel({ tunnel_id: tunnelId });
-        if (!result.success) {
-          showError(result.error || 'Failed to connect');
-        }
-        refreshStatus();
-      } catch (e) {
-        showError('Connect failed: ' + e.message);
-      }
-    }
-
-    async function disconnectTunnel(tunnelId) {
-      try {
-        await window.electronAPI.disconnectTunnel(tunnelId);
-        refreshStatus();
-      } catch (e) {
-        showError('Disconnect failed: ' + e.message);
       }
     }
 
@@ -918,6 +1014,13 @@
 
     function hideError() {
       errorMessage.classList.add('hidden');
+    }
+
+    function showConnectedError(message) {
+      const el = document.getElementById('connectedError');
+      el.textContent = message;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 5000);
     }
 
     function startStatusCheck() {
@@ -941,21 +1044,13 @@
 
     appTitle.addEventListener('click', () => {
       devToolsClickCount++;
+      if (devToolsClickTimer) clearTimeout(devToolsClickTimer);
+      devToolsClickTimer = setTimeout(() => { devToolsClickCount = 0; }, 2000);
 
-      // Reset counter after 2 seconds of no clicks
-      if (devToolsClickTimer) {
-        clearTimeout(devToolsClickTimer);
-      }
-      devToolsClickTimer = setTimeout(() => {
-        devToolsClickCount = 0;
-      }, 2000);
-
-      // Activate dev tools after 4 clicks
       if (devToolsClickCount >= 4) {
         devToolsClickCount = 0;
         if (window.electronAPI && window.electronAPI.activateDevTools) {
           window.electronAPI.activateDevTools();
-          console.log('Dev tools activated! Press Cmd+Option+I (macOS) or Ctrl+Shift+I (Windows/Linux)');
         }
       }
     });
@@ -963,30 +1058,19 @@
     // Settings modal functions
     let currentRoutes = [];
     let excludedRoutes = [];
-    let currentToken = null;
 
     function switchTab(event, tabName) {
-      event.stopPropagation(); // Prevent event from bubbling to overlay
-
-      // Update tab buttons
-      document.querySelectorAll('.modal-tab').forEach(tab => {
-        tab.classList.remove('active');
-      });
+      event.stopPropagation();
+      document.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
       event.target.classList.add('active');
-
-      // Update tab panes
-      document.querySelectorAll('.tab-pane').forEach(pane => {
-        pane.classList.remove('active');
-      });
+      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
       document.getElementById('tab-' + tabName).classList.add('active');
     }
 
     function openSettings() {
       document.getElementById('settingsModal').classList.remove('hidden');
       loadRouteSettings();
-      // Clear search box
       document.getElementById('routeSearch').value = '';
-      // Clear password fields
       document.getElementById('currentPassword').value = '';
       document.getElementById('newPassword').value = '';
       document.getElementById('confirmPassword').value = '';
@@ -998,102 +1082,48 @@
     }
 
     function closeSettingsOnOverlay(event) {
-      if (event.target.id === 'settingsModal') {
-        closeSettings();
-      }
+      if (event.target.id === 'settingsModal') closeSettings();
     }
 
     async function loadRouteSettings() {
       try {
-        // Try to load from multi-tunnel API first
-        const tunnelsResult = await window.electronAPI.getTunnelsStatus();
-        if (tunnelsResult.success && tunnelsResult.data.connections && tunnelsResult.data.connections.length > 0) {
-          tunnelConnections = tunnelsResult.data.connections.filter(c => c.state === 'connected');
-          renderTunnelRouteList();
-          return;
-        }
-
-        // Fallback to single connection mode
-        const result = await window.electronAPI.getRouteSettings();
-        if (result.success) {
-          currentRoutes = result.data.available_routes || [];
-          excludedRoutes = result.data.excluded_routes || [];
-          tunnelConnections = [];
-          renderRouteList();
+        const result = await window.electronAPI.getTunnelsStatus();
+        if (result.success && result.data.connections) {
+          const connected = result.data.connections.filter(c => c.state === 'connected');
+          renderTunnelRouteList(connected);
         }
       } catch (e) {
         console.error('Failed to load route settings:', e);
       }
     }
 
-    function renderTunnelRouteList(searchTerm = '') {
+    function renderTunnelRouteList(connections, searchTerm = '') {
       const routeList = document.getElementById('routeList');
 
-      if (tunnelConnections.length === 0) {
+      if (!connections || connections.length === 0) {
         routeList.innerHTML = '<div class="empty-state">Connect to a tunnel to see available routes</div>';
         return;
       }
 
       let html = '';
-      tunnelConnections.forEach(conn => {
+      connections.forEach(conn => {
         const routes = conn.available_routes || [];
-        const filteredRoutes = searchTerm
-          ? routes.filter(r => r.toLowerCase().includes(searchTerm.toLowerCase()))
-          : routes;
+        const filtered = searchTerm ? routes.filter(r => r.toLowerCase().includes(searchTerm.toLowerCase())) : routes;
 
-        html += `
-          <div class="tunnel-group">
-            <div class="tunnel-group-header">
-              <span class="tunnel-name">${conn.name || conn.id}</span>
-              <span class="tunnel-ip">${conn.assigned_ip || ''}</span>
-            </div>
-        `;
+        html += `<div class="tunnel-group">
+          <div class="tunnel-group-header">
+            <span class="tunnel-name">${conn.name || conn.id}</span>
+            <span class="tunnel-ip">${conn.assigned_ip || ''}</span>
+          </div>`;
 
-        if (filteredRoutes.length === 0) {
-          html += '<div class="empty-state" style="padding: 10px;">No routes configured</div>';
+        if (filtered.length === 0) {
+          html += '<div class="empty-state" style="padding: 10px;">No routes</div>';
         } else {
-          filteredRoutes.forEach((route, index) => {
-            html += `
-              <div class="route-item">
-                <span class="route-cidr">${route}</span>
-              </div>
-            `;
+          filtered.forEach(route => {
+            html += `<div class="route-item"><span class="route-cidr">${route}</span></div>`;
           });
         }
-
         html += '</div>';
-      });
-
-      routeList.innerHTML = html;
-    }
-
-    function renderRouteList(searchTerm = '') {
-      const routeList = document.getElementById('routeList');
-
-      if (currentRoutes.length === 0) {
-        routeList.innerHTML = '<div class="empty-state">Connect to a server to see available routes</div>';
-        return;
-      }
-
-      const filteredRoutes = searchTerm
-        ? currentRoutes.filter(route => route.toLowerCase().includes(searchTerm.toLowerCase()))
-        : currentRoutes;
-
-      if (filteredRoutes.length === 0) {
-        routeList.innerHTML = '<div class="empty-state">No routes match your search</div>';
-        return;
-      }
-
-      let html = '';
-      filteredRoutes.forEach((route, index) => {
-        const isExcluded = excludedRoutes.includes(route);
-        const itemClass = isExcluded ? 'route-item excluded' : 'route-item';
-        html += `
-          <div class="${itemClass}">
-            <input type="checkbox" id="route-${index}" ${!isExcluded ? 'checked' : ''} onchange="toggleRoute('${route}', this.checked)">
-            <label for="route-${index}">${route}</label>
-          </div>
-        `;
       });
 
       routeList.innerHTML = html;
@@ -1101,41 +1131,8 @@
 
     function filterRoutes() {
       const searchTerm = document.getElementById('routeSearch').value;
-      if (tunnelConnections.length > 0) {
-        renderTunnelRouteList(searchTerm);
-      } else {
-        renderRouteList(searchTerm);
-      }
-    }
-
-    async function toggleRoute(route, isEnabled) {
-      if (isEnabled) {
-        excludedRoutes = excludedRoutes.filter(r => r !== route);
-      } else {
-        if (!excludedRoutes.includes(route)) {
-          excludedRoutes.push(route);
-        }
-      }
-
-      try {
-        const result = await window.electronAPI.updateRouteSettings(excludedRoutes);
-        if (result.success) {
-          showRouteMessage('Routes updated and applied.', 'success');
-          renderRouteList();
-        } else {
-          showRouteMessage('Failed to save route settings: ' + result.error, 'error');
-        }
-      } catch (e) {
-        showRouteMessage('Failed to save route settings', 'error');
-      }
-    }
-
-    function showRouteMessage(message, type) {
-      const el = document.getElementById('routeMessage');
-      el.textContent = message;
-      el.className = type === 'success' ? 'success-message' : 'error-message';
-      el.classList.remove('hidden');
-      setTimeout(() => el.classList.add('hidden'), 3000);
+      const connected = tunnelConnections.filter(c => c.state === 'connected');
+      renderTunnelRouteList(connected, searchTerm);
     }
 
     async function changePassword() {
@@ -1144,33 +1141,24 @@
       const confirmPassword = document.getElementById('confirmPassword').value;
       const btn = document.getElementById('changePasswordBtn');
 
-      // Validation
       if (!currentPassword || !newPassword || !confirmPassword) {
-        showPasswordMessage('Please fill in all password fields', 'error');
+        showPasswordMessage('Please fill in all fields', 'error');
         return;
       }
-
       if (newPassword.length < 8) {
         showPasswordMessage('New password must be at least 8 characters', 'error');
         return;
       }
-
       if (newPassword !== confirmPassword) {
-        showPasswordMessage('New passwords do not match', 'error');
+        showPasswordMessage('Passwords do not match', 'error');
         return;
       }
 
-      // Get saved credentials
       const serverAddress = localStorage.getItem('wiresocket_server');
       const token = localStorage.getItem('wiresocket_token');
 
-      if (!serverAddress) {
-        showPasswordMessage('Server address not found. Please connect first.', 'error');
-        return;
-      }
-
-      if (!token) {
-        showPasswordMessage('Not authenticated. Please reconnect to the server.', 'error');
+      if (!serverAddress || !token) {
+        showPasswordMessage('Please connect to a server first', 'error');
         return;
       }
 
@@ -1187,11 +1175,9 @@
 
         if (result.success) {
           showPasswordMessage('Password changed successfully!', 'success');
-          // Update saved password if remember is enabled
           if (localStorage.getItem('wiresocket_remember') === 'true') {
             localStorage.setItem('wiresocket_password', newPassword);
           }
-          // Clear fields
           document.getElementById('currentPassword').value = '';
           document.getElementById('newPassword').value = '';
           document.getElementById('confirmPassword').value = '';
@@ -1199,7 +1185,7 @@
           showPasswordMessage(result.error || 'Failed to change password', 'error');
         }
       } catch (e) {
-        showPasswordMessage('Failed to change password: ' + e.message, 'error');
+        showPasswordMessage('Failed: ' + e.message, 'error');
       }
 
       btn.disabled = false;
@@ -1215,79 +1201,6 @@
 
     function hidePasswordMessage() {
       document.getElementById('passwordMessage').classList.add('hidden');
-    }
-
-    // Multi-tunnel rendering
-    async function loadTunnelsStatus() {
-      try {
-        const result = await window.electronAPI.getTunnelsStatus();
-        if (result.success) {
-          authSessions = result.data.sessions || [];
-          const connections = result.data.connections || [];
-          renderServersList(authSessions, connections);
-        }
-      } catch (e) {
-        console.error('Failed to load tunnels status:', e);
-      }
-    }
-
-    function renderServersList(sessions, connections) {
-      const serversList = document.getElementById('serversList');
-
-      if (!sessions || sessions.length === 0) {
-        serversList.innerHTML = '<div class="empty-state">No servers connected. Add a server above.</div>';
-        return;
-      }
-
-      let html = '';
-      sessions.forEach(session => {
-        // Get tunnels for this auth service
-        const sessionTunnels = session.tunnels || [];
-
-        html += `
-          <div class="tunnel-group">
-            <div class="tunnel-group-header">
-              <div>
-                <span class="tunnel-name">${session.username}@${getHostname(session.auth_url)}</span>
-              </div>
-              <button class="btn btn-secondary btn-small" style="padding: 3px 8px; font-size: 11px;" onclick="logoutFromServer('${escapeQuotes(session.auth_url)}')">
-                Logout
-              </button>
-            </div>
-        `;
-
-        if (sessionTunnels.length === 0) {
-          html += '<div class="empty-state" style="padding: 10px;">No tunnels available</div>';
-        } else {
-          sessionTunnels.forEach(tunnel => {
-            // Find connection status for this tunnel
-            const conn = connections.find(c => c.id === tunnel.id);
-            const isConnected = conn && (conn.state === 'connected' || conn.state === 'connecting');
-            const statusIcon = conn ? (conn.state === 'connected' ? '🟢' : conn.state === 'connecting' ? '🟡' : '🔴') : '⚪';
-            const statusText = conn ? (conn.state === 'connected' ? conn.assigned_ip : conn.state) : 'Not connected';
-
-            html += `
-              <div class="route-item" style="justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span>${statusIcon}</span>
-                  <div>
-                    <div style="font-weight: 500;">${tunnel.name || tunnel.id}</div>
-                    <div style="font-size: 11px; color: #999;">${tunnel.region || ''} ${statusText}</div>
-                  </div>
-                </div>
-                ${isConnected
-                  ? `<button class="btn btn-secondary btn-small" style="padding: 3px 8px; font-size: 11px;" onclick="disconnectTunnel('${tunnel.id}')">Disconnect</button>`
-                  : `<button class="btn btn-primary btn-small" style="padding: 3px 8px; font-size: 11px;" onclick="connectTunnel('${tunnel.id}')">Connect</button>`
-                }
-              </div>
-            `;
-          });
-        }
-
-        html += '</div>';
-      });
-
-      serversList.innerHTML = html;
     }
 
     // Start waiting for backend on page load
