@@ -9,17 +9,17 @@
   ; Install the backend as a Windows service
   DetailPrint "Installing WireSocket Client Service..."
 
-  ; First, try to stop any existing service
+  ; Stop any existing service (ignore errors)
   nsExec::ExecToLog 'net stop WireSocketClient'
 
-  ; Wait for service to fully stop
-  Sleep 2000
+  ; Force kill the process if still running
+  nsExec::ExecToLog 'taskkill /F /IM wire-socket-client.exe'
 
-  ; Delete any existing service
+  ; Force delete the service
   nsExec::ExecToLog 'sc delete WireSocketClient'
 
-  ; Wait for service to be deleted
-  Sleep 1000
+  ; Small wait to ensure cleanup is complete
+  Sleep 500
 
   ; Install the service using the backend binary
   nsExec::ExecToLog '"$INSTDIR\resources\bin\wire-socket-client.exe" -service install'
@@ -36,9 +36,12 @@
   DetailPrint "Stopping WireSocket service..."
   nsExec::ExecToLog 'net stop WireSocketClient'
 
+  ; Force kill the process
+  nsExec::ExecToLog 'taskkill /F /IM wire-socket-client.exe'
+
   DetailPrint "Removing WireSocket service..."
   nsExec::ExecToLog '"$INSTDIR\resources\bin\wire-socket-client.exe" -service uninstall'
 
-  ; Fallback: try sc delete
+  ; Fallback: force delete service
   nsExec::ExecToLog 'sc delete WireSocketClient'
 !macroend
