@@ -31,12 +31,17 @@ function getPortFilePath() {
 function readPortFromFile() {
   try {
     const portFile = getPortFilePath();
+    console.log('Port file path:', portFile);
     if (fs.existsSync(portFile)) {
       const content = fs.readFileSync(portFile, 'utf-8').trim();
+      console.log('Port file content:', content);
       const port = parseInt(content, 10);
       if (!isNaN(port) && port > 0 && port < 65536) {
+        console.log('Read port from file:', port);
         return port;
       }
+    } else {
+      console.log('Port file does not exist');
     }
   } catch (error) {
     console.log('Could not read port file:', error.message);
@@ -98,9 +103,13 @@ function getBackendPath() {
 // Check if backend service is running
 async function checkBackendService() {
   try {
-    const response = await axios.get(`${getApiBase()}/health`, { timeout: 2000 });
+    const url = `${getApiBase()}/health`;
+    console.log('Checking backend service at:', url);
+    const response = await axios.get(url, { timeout: 2000 });
+    console.log('Backend service check success:', response.data);
     return true;
   } catch (error) {
+    console.log('Backend service check failed:', error.message);
     return false;
   }
 }
