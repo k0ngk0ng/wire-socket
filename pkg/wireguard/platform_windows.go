@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// tunGatewayIP stores the TUN interface gateway IP for routing
-var tunGatewayIP string
+// tunInterfaceIP stores the TUN interface IP for routing decisions
+var tunInterfaceIP net.IP
 
 // setTunAddress sets the IP address on the TUN interface (Windows)
 func setTunAddress(name, address string) error {
@@ -26,8 +26,8 @@ func setTunAddress(name, address string) error {
 
 	log.Printf("Setting TUN address: interface=%s, ip=%s, mask=%s", name, ip.String(), mask)
 
-	// Store the IP for routing - we'll use the interface's own IP as the "gateway" for on-link routes
-	tunGatewayIP = ip.String()
+	// Store the IP for routing decisions
+	tunInterfaceIP = ip
 
 	// Use netsh to set the address
 	cmd := exec.Command("netsh", "interface", "ip", "set", "address",
@@ -85,11 +85,11 @@ func setRoutes(name string, routes []net.IPNet) error {
 	for _, route := range routes {
 		mask := ipMaskToStringWin(route.Mask)
 
-		// Use route add with interface index and the TUN's IP as gateway
-		// This creates an on-link route through the TUN interface
-		gateway := tunGatewayIP
-		if gateway == "" {
-			gateway = "0.0.0.0"
+		// On Windows, all routes through TUN should use the TUN's IP as gateway
+		// This ensures traffic goes through the TUN interface
+		gateway := "0.0.0.0"
+		if tunInterfaceIP != nil {
+			gateway = tunInterfaceIP.String()
 		}
 
 		cmd := exec.Command("route", "add", route.IP.String(), "mask", mask, gateway, "if", strconv.Itoa(ifIndex))
@@ -105,7 +105,7 @@ func setRoutes(name string, routes []net.IPNet) error {
 				}
 			}
 		} else {
-			log.Printf("Added route %s via interface %d (gateway %s)", route.String(), ifIndex, gateway)
+			log.Printf("Added route %s (gateway %s) via interface %d", route.String(), gateway, ifIndex)
 		}
 	}
 	return nil
@@ -126,13 +126,13 @@ func addRouteNetsh(name string, route net.IPNet) error {
 	ones, _ := route.Mask.Size()
 	prefix := fmt.Sprintf("%s/%d", route.IP.String(), ones)
 
-	// Use nexthop parameter for on-link routes
+	// All routes use TUN's IP as nexthop
 	var cmd *exec.Cmd
-	if tunGatewayIP != "" {
+	if tunInterfaceIP != nil {
 		cmd = exec.Command("netsh", "interface", "ipv4", "add", "route",
 			prefix,
 			fmt.Sprintf("interface=%s", name),
-			fmt.Sprintf("nexthop=%s", tunGatewayIP),
+			fmt.Sprintf("nexthop=%s", tunInterfaceIP.String()),
 			"store=active")
 	} else {
 		cmd = exec.Command("netsh", "interface", "ipv4", "add", "route",
