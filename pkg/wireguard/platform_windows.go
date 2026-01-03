@@ -14,6 +14,9 @@ import (
 // tunInterfaceIP stores the TUN interface IP for routing decisions
 var tunInterfaceIP net.IP
 
+// tunSubnet stores the TUN interface subnet
+var tunSubnet *net.IPNet
+
 // setTunAddress sets the IP address on the TUN interface (Windows)
 func setTunAddress(name, address string) error {
 	// Parse the address
@@ -22,22 +25,44 @@ func setTunAddress(name, address string) error {
 		return fmt.Errorf("invalid address %s: %w", address, err)
 	}
 
-	mask := ipMaskToStringWin(ipNet.Mask)
+	// For Windows, we use /24 subnet mask similar to macOS
+	// This creates proper subnet routing
+	mask := "255.255.255.0"
 
-	log.Printf("Setting TUN address: interface=%s, ip=%s, mask=%s", name, ip.String(), mask)
+	// Calculate the gateway IP (first IP in subnet, like 10.250.99.1)
+	gatewayIP := make(net.IP, len(ipNet.IP))
+	copy(gatewayIP, ipNet.IP)
+	gatewayIP[len(gatewayIP)-1] = 1
 
-	// Store the IP for routing decisions
+	log.Printf("Setting TUN address: interface=%s, ip=%s, mask=%s, gateway=%s", name, ip.String(), mask, gatewayIP.String())
+
+	// Store the IP and subnet for routing decisions
 	tunInterfaceIP = ip
+	tunSubnet = &net.IPNet{
+		IP:   ipNet.IP,
+		Mask: net.CIDRMask(24, 32), // /24 subnet
+	}
 
-	// Use netsh to set the address
+	// Use netsh to set the address with /24 mask
 	cmd := exec.Command("netsh", "interface", "ip", "set", "address",
 		fmt.Sprintf("name=%s", name),
 		"source=static",
 		fmt.Sprintf("addr=%s", ip.String()),
-		fmt.Sprintf("mask=%s", mask))
+		fmt.Sprintf("mask=%s", mask),
+		fmt.Sprintf("gateway=%s", gatewayIP.String()))
 
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to set address: %s: %w", string(output), err)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// If setting with gateway fails, try without gateway
+		log.Printf("Failed to set address with gateway, trying without: %s", string(output))
+		cmd = exec.Command("netsh", "interface", "ip", "set", "address",
+			fmt.Sprintf("name=%s", name),
+			"source=static",
+			fmt.Sprintf("addr=%s", ip.String()),
+			fmt.Sprintf("mask=%s", mask))
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to set address: %s: %w", string(output), err)
+		}
 	}
 
 	log.Printf("TUN address set successfully")
@@ -70,6 +95,15 @@ func getInterfaceIndex(name string) (int, error) {
 	return 0, fmt.Errorf("interface %s not found", name)
 }
 
+// isLocalSubnet checks if the route is for the local VPN subnet
+func isLocalSubnet(route net.IPNet) bool {
+	if tunSubnet == nil {
+		return false
+	}
+	// Check if this route covers the same network as our TUN subnet
+	return tunSubnet.Contains(route.IP) || route.Contains(tunSubnet.IP)
+}
+
 // setRoutes configures routes through the TUN interface (Windows)
 func setRoutes(name string, routes []net.IPNet) error {
 	// Get the interface index
@@ -82,14 +116,29 @@ func setRoutes(name string, routes []net.IPNet) error {
 
 	log.Printf("Got interface index %d for %s", ifIndex, name)
 
+	// Calculate gateway IP (e.g., 10.250.99.1)
+	var gatewayIP string
+	if tunSubnet != nil {
+		gw := make(net.IP, len(tunSubnet.IP))
+		copy(gw, tunSubnet.IP)
+		gw[len(gw)-1] = 1
+		gatewayIP = gw.String()
+	}
+
 	for _, route := range routes {
 		mask := ipMaskToStringWin(route.Mask)
 
-		// On Windows, all routes through TUN should use the TUN's IP as gateway
-		// This ensures traffic goes through the TUN interface
-		gateway := "0.0.0.0"
-		if tunInterfaceIP != nil {
-			gateway = tunInterfaceIP.String()
+		// Skip routes for the local subnet (already handled by interface address)
+		if isLocalSubnet(route) {
+			log.Printf("Skipping local subnet route %s (handled by interface)", route.String())
+			continue
+		}
+
+		// For external routes, use the VPN gateway (10.250.99.1) as next hop
+		// This is similar to how macOS routes work
+		gateway := gatewayIP
+		if gateway == "" {
+			gateway = "0.0.0.0"
 		}
 
 		cmd := exec.Command("route", "add", route.IP.String(), "mask", mask, gateway, "if", strconv.Itoa(ifIndex))
@@ -100,7 +149,7 @@ func setRoutes(name string, routes []net.IPNet) error {
 			if !strings.Contains(outputStr, "already exists") && !strings.Contains(outputStr, "object already exists") {
 				log.Printf("Warning: failed to add route %s via route command: %s", route.String(), outputStr)
 				// Try netsh as fallback
-				if err := addRouteNetsh(name, route); err != nil {
+				if err := addRouteNetsh(name, route, gatewayIP); err != nil {
 					log.Printf("Warning: failed to add route %s via netsh: %v", route.String(), err)
 				}
 			}
@@ -113,8 +162,19 @@ func setRoutes(name string, routes []net.IPNet) error {
 
 // setRoutesNetsh uses netsh to set routes (fallback method)
 func setRoutesNetsh(name string, routes []net.IPNet) error {
+	var gatewayIP string
+	if tunSubnet != nil {
+		gw := make(net.IP, len(tunSubnet.IP))
+		copy(gw, tunSubnet.IP)
+		gw[len(gw)-1] = 1
+		gatewayIP = gw.String()
+	}
+
 	for _, route := range routes {
-		if err := addRouteNetsh(name, route); err != nil {
+		if isLocalSubnet(route) {
+			continue
+		}
+		if err := addRouteNetsh(name, route, gatewayIP); err != nil {
 			log.Printf("Warning: failed to add route %s: %v", route.String(), err)
 		}
 	}
@@ -122,17 +182,16 @@ func setRoutesNetsh(name string, routes []net.IPNet) error {
 }
 
 // addRouteNetsh adds a single route using netsh
-func addRouteNetsh(name string, route net.IPNet) error {
+func addRouteNetsh(name string, route net.IPNet, gatewayIP string) error {
 	ones, _ := route.Mask.Size()
 	prefix := fmt.Sprintf("%s/%d", route.IP.String(), ones)
 
-	// All routes use TUN's IP as nexthop
 	var cmd *exec.Cmd
-	if tunInterfaceIP != nil {
+	if gatewayIP != "" {
 		cmd = exec.Command("netsh", "interface", "ipv4", "add", "route",
 			prefix,
 			fmt.Sprintf("interface=%s", name),
-			fmt.Sprintf("nexthop=%s", tunInterfaceIP.String()),
+			fmt.Sprintf("nexthop=%s", gatewayIP),
 			"store=active")
 	} else {
 		cmd = exec.Command("netsh", "interface", "ipv4", "add", "route",
