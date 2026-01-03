@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dev tools
   activateDevTools: () => ipcRenderer.invoke('devtools:activate'),
 
+  // Route settings
+  getRouteSettings: () => ipcRenderer.invoke('api:getRouteSettings'),
+  updateRouteSettings: (excludedRoutes) => ipcRenderer.invoke('api:updateRouteSettings', excludedRoutes),
+
   // Password management
   changePassword: (data) => ipcRenderer.invoke('api:changePassword', data),
 });

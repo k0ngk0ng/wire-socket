@@ -26,15 +26,15 @@
       border-radius: 20px;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
       width: 100%;
-      max-width: 500px;
-      padding: 40px;
+      max-width: 420px;
+      padding: 30px;
     }
 
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 30px;
+      margin-bottom: 25px;
     }
 
     .header-left {
@@ -44,16 +44,14 @@
 
     h1 {
       color: #333;
-      font-size: 28px;
+      font-size: 24px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       margin: 0;
     }
 
-    .app-icon {
-      font-size: 32px;
-    }
+    .app-icon { font-size: 28px; }
 
     .backend-indicator {
       width: 10px;
@@ -65,10 +63,7 @@
       margin-top: 5px;
     }
 
-    .backend-indicator.online {
-      background-color: #2ecc71;
-    }
-
+    .backend-indicator.online { background-color: #2ecc71; }
     .backend-indicator.connecting {
       background-color: #f39c12;
       animation: pulse 1.5s ease-in-out infinite;
@@ -84,21 +79,19 @@
       100% { transform: rotate(360deg); }
     }
 
-    .form-group {
-      margin-bottom: 20px;
-    }
+    .form-group { margin-bottom: 15px; }
 
     label {
       display: block;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       color: #555;
       font-weight: 500;
-      font-size: 14px;
+      font-size: 13px;
     }
 
     input {
       width: 100%;
-      padding: 12px;
+      padding: 10px;
       border: 2px solid #e0e0e0;
       border-radius: 8px;
       font-size: 14px;
@@ -112,10 +105,10 @@
 
     .btn {
       width: 100%;
-      padding: 14px;
+      padding: 12px;
       border: none;
       border-radius: 8px;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s;
@@ -151,119 +144,80 @@
 
     .status-box {
       background: #f8f9fa;
-      border-radius: 12px;
-      padding: 20px;
-      margin-top: 20px;
+      border-radius: 10px;
+      padding: 15px;
     }
 
     .status-item {
       display: flex;
       justify-content: space-between;
-      padding: 10px 0;
+      padding: 8px 0;
       border-bottom: 1px solid #e0e0e0;
     }
 
-    .status-item:last-child {
-      border-bottom: none;
-    }
+    .status-item:last-child { border-bottom: none; }
 
-    .status-label {
-      color: #666;
-      font-size: 14px;
-    }
-
-    .status-value {
-      color: #333;
-      font-weight: 600;
-      font-size: 14px;
-    }
+    .status-label { color: #666; font-size: 13px; }
+    .status-value { color: #333; font-weight: 600; font-size: 13px; }
 
     .error-message {
       background: #ffe6e6;
       color: #c0392b;
-      padding: 12px;
+      padding: 10px;
       border-radius: 8px;
-      margin-top: 15px;
-      font-size: 14px;
+      margin-top: 12px;
+      font-size: 13px;
     }
 
-    .hidden {
-      display: none !important;
-    }
+    .hidden { display: none !important; }
 
     .traffic-stats {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      margin-top: 15px;
+      gap: 10px;
+      margin-top: 10px;
     }
 
     .traffic-card {
       background: white;
-      padding: 15px;
-      border-radius: 10px;
+      padding: 12px;
+      border-radius: 8px;
       text-align: center;
     }
 
-    .traffic-label {
-      font-size: 12px;
-      color: #666;
-      margin-bottom: 5px;
-    }
+    .traffic-label { font-size: 11px; color: #666; margin-bottom: 4px; }
+    .traffic-value { font-size: 18px; font-weight: bold; color: #667eea; }
 
-    .traffic-value {
-      font-size: 20px;
-      font-weight: bold;
-      color: #667eea;
-    }
-
-    .loading-view {
-      text-align: center;
-      padding: 40px 20px;
-    }
+    .loading-view { text-align: center; padding: 30px 20px; }
 
     .loading-spinner {
-      width: 50px;
-      height: 50px;
-      border: 4px solid #e0e0e0;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #e0e0e0;
       border-top-color: #667eea;
       border-radius: 50%;
       animation: spin 1s linear infinite;
-      margin: 0 auto 20px;
+      margin: 0 auto 15px;
     }
 
-    .loading-text {
-      color: #666;
-      font-size: 16px;
-      margin-bottom: 10px;
-    }
+    .loading-text { color: #666; font-size: 15px; margin-bottom: 8px; }
+    .loading-subtext { color: #999; font-size: 13px; }
 
-    .loading-subtext {
-      color: #999;
-      font-size: 14px;
-    }
+    .vpn-status-text { color: #666; font-size: 13px; margin-top: 4px; }
 
-    .vpn-status-text {
-      color: #666;
-      font-size: 14px;
-      margin-top: 4px;
-    }
-
-    .checkbox-group {
-      margin-bottom: 20px;
-    }
+    .checkbox-group { margin-bottom: 15px; }
 
     .checkbox-label {
       display: flex;
       align-items: center;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 13px;
       color: #555;
     }
 
     .checkbox-label input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
+      width: 16px;
+      height: 16px;
       margin-right: 8px;
       cursor: pointer;
       accent-color: #667eea;
@@ -272,16 +226,14 @@
     .settings-btn {
       background: none;
       border: none;
-      font-size: 20px;
+      font-size: 18px;
       cursor: pointer;
       opacity: 0.6;
       transition: opacity 0.3s;
       padding: 5px;
     }
 
-    .settings-btn:hover {
-      opacity: 1;
-    }
+    .settings-btn:hover { opacity: 1; }
 
     .modal-overlay {
       position: fixed;
@@ -298,47 +250,62 @@
 
     .modal {
       background: white;
-      border-radius: 16px;
+      border-radius: 14px;
       width: 90%;
-      max-width: 450px;
-      max-height: 90vh;
-      overflow-y: auto;
+      max-width: 400px;
+      max-height: 85vh;
+      overflow: hidden;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     }
 
     .modal-header {
-      padding: 20px;
+      padding: 15px 20px;
       border-bottom: 1px solid #e0e0e0;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .modal-header h2 {
-      margin: 0;
-      font-size: 18px;
-      color: #333;
-    }
+    .modal-header h2 { margin: 0; font-size: 16px; color: #333; }
 
     .modal-close {
       background: none;
       border: none;
-      font-size: 24px;
+      font-size: 22px;
       cursor: pointer;
       color: #666;
       line-height: 1;
     }
 
-    .modal-close:hover {
-      color: #333;
+    .modal-close:hover { color: #333; }
+
+    .modal-tabs {
+      display: flex;
+      border-bottom: 1px solid #e0e0e0;
     }
 
-    .modal-body {
-      padding: 20px;
+    .modal-tab {
+      flex: 1;
+      padding: 10px 14px;
+      background: none;
+      border: none;
+      font-size: 13px;
+      color: #666;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
     }
+
+    .modal-tab:hover { color: #667eea; background: #f8f9ff; }
+    .modal-tab.active { color: #667eea; border-bottom-color: #667eea; font-weight: 500; }
+
+    .tab-content { padding: 15px 20px; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
 
     .route-list {
-      max-height: 200px;
+      max-height: 180px;
       overflow-y: auto;
       border: 1px solid #e0e0e0;
       border-radius: 8px;
@@ -347,34 +314,46 @@
     .route-item {
       display: flex;
       align-items: center;
-      padding: 10px 12px;
+      padding: 8px 10px;
       border-bottom: 1px solid #f0f0f0;
     }
 
-    .route-item:last-child {
-      border-bottom: none;
+    .route-item:last-child { border-bottom: none; }
+
+    .route-item input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      margin-right: 8px;
+      accent-color: #667eea;
     }
 
-    .route-cidr {
-      font-size: 13px;
+    .route-item label {
+      font-size: 12px;
       color: #333;
       font-family: monospace;
+      margin: 0;
+      cursor: pointer;
     }
 
     .empty-state {
-      padding: 20px;
+      padding: 15px;
       text-align: center;
       color: #999;
-      font-size: 14px;
+      font-size: 13px;
     }
 
     .success-message {
       background: #d4edda;
       color: #155724;
-      padding: 12px;
+      padding: 10px;
       border-radius: 8px;
-      margin-top: 15px;
-      font-size: 14px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    .btn-small {
+      padding: 8px 14px;
+      font-size: 13px;
     }
   </style>
 </head>
@@ -405,7 +384,7 @@
     <div id="loginForm" class="hidden">
       <div class="form-group">
         <label for="serverAddress">Server Address</label>
-        <input type="text" id="serverAddress" placeholder="https://vpn.example.com">
+        <input type="text" id="serverAddress" placeholder="vpn.example.com">
       </div>
       <div class="form-group">
         <label for="username">Username</label>
@@ -454,13 +433,7 @@
         </div>
       </div>
 
-      <!-- Routes Section -->
-      <div id="routesSection" class="status-box" style="margin-top: 15px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Active Routes</h3>
-        <div id="routesList" class="route-list" style="max-height: 150px;"></div>
-      </div>
-
-      <button class="btn btn-danger" style="margin-top: 20px;" onclick="disconnect()">
+      <button class="btn btn-danger" style="margin-top: 15px;" onclick="disconnect()">
         Disconnect
       </button>
       <div id="connectedError" class="error-message hidden"></div>
@@ -470,33 +443,53 @@
     <div id="settingsModal" class="modal-overlay hidden" onclick="closeSettingsOnOverlay(event)">
       <div class="modal" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h2>Change Password</h2>
+          <h2>Settings</h2>
           <button class="modal-close" onclick="closeSettings()">&times;</button>
         </div>
-        <div class="modal-body">
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label for="currentPassword" style="margin-bottom: 5px;">Current Password</label>
-            <input type="password" id="currentPassword" placeholder="Enter current password">
+        <div class="modal-tabs">
+          <button class="modal-tab active" onclick="switchTab(event, 'routes')">Routes</button>
+          <button class="modal-tab" onclick="switchTab(event, 'password')">Password</button>
+        </div>
+        <div class="tab-content">
+          <!-- Routes Tab -->
+          <div id="tab-routes" class="tab-pane active">
+            <p style="font-size: 12px; color: #666; margin: 0 0 10px 0;">
+              Uncheck routes to exclude them from VPN tunnel.
+            </p>
+            <div style="margin-bottom: 8px;">
+              <input type="text" id="routeSearch" placeholder="Search CIDR..." oninput="filterRoutes()" style="width: 100%; padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px;">
+            </div>
+            <div id="routeList" class="route-list">
+              <div class="empty-state">Connect to a server to see available routes</div>
+            </div>
+            <div id="routeMessage" class="hidden"></div>
           </div>
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label for="newPassword" style="margin-bottom: 5px;">New Password</label>
-            <input type="password" id="newPassword" placeholder="At least 8 characters">
+
+          <!-- Password Tab -->
+          <div id="tab-password" class="tab-pane">
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label for="currentPassword" style="margin-bottom: 4px;">Current Password</label>
+              <input type="password" id="currentPassword" placeholder="Enter current password">
+            </div>
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label for="newPassword" style="margin-bottom: 4px;">New Password</label>
+              <input type="password" id="newPassword" placeholder="At least 8 characters">
+            </div>
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label for="confirmPassword" style="margin-bottom: 4px;">Confirm New Password</label>
+              <input type="password" id="confirmPassword" placeholder="Confirm new password">
+            </div>
+            <button class="btn btn-primary btn-small" onclick="changePassword()" id="changePasswordBtn">
+              Change Password
+            </button>
+            <div id="passwordMessage" class="hidden"></div>
           </div>
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label for="confirmPassword" style="margin-bottom: 5px;">Confirm New Password</label>
-            <input type="password" id="confirmPassword" placeholder="Confirm new password">
-          </div>
-          <button class="btn btn-primary" onclick="changePassword()" id="changePasswordBtn" style="padding: 10px 16px; font-size: 14px;">
-            Change Password
-          </button>
-          <div id="passwordMessage" class="hidden"></div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // DOM Elements
     const backendIndicator = document.getElementById('backendIndicator');
     const statusText = document.getElementById('statusText');
     const loadingView = document.getElementById('loadingView');
@@ -507,6 +500,8 @@
 
     let statusCheckInterval = null;
     let backendReady = false;
+    let currentRoutes = [];
+    let excludedRoutes = [];
 
     // Listen for service status from main process
     if (window.electronAPI && window.electronAPI.onServiceStatus) {
@@ -566,9 +561,9 @@
           setTimeout(checkBackend, 1000);
         } else {
           loadingView.innerHTML = `
-            <div style="color: #e74c3c; font-size: 48px; margin-bottom: 20px;">⚠️</div>
+            <div style="color: #e74c3c; font-size: 40px; margin-bottom: 15px;">⚠️</div>
             <div class="loading-text" style="color: #e74c3c;">Failed to start VPN service</div>
-            <div class="loading-subtext">Please restart the application or check system logs</div>
+            <div class="loading-subtext">Please restart the application</div>
           `;
         }
       };
@@ -582,14 +577,11 @@
       backendIndicator.classList.add('online');
       loadingView.classList.add('hidden');
 
-      // Load saved credentials
       loadSavedCredentials();
-
-      // Check current status
       checkStatus();
     }
 
-    // Ensure URL has protocol scheme
+    // Normalize server URL - add https:// if no scheme
     function normalizeServerUrl(url) {
       url = url.trim();
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -608,18 +600,19 @@
         return;
       }
 
-      // Normalize the server URL
-      serverAddress = normalizeServerUrl(serverAddress);
+      // Store the original input (without protocol) for display
+      const displayServer = serverAddress;
+      // Normalize for API call
+      const apiServer = normalizeServerUrl(serverAddress);
 
       connectBtn.disabled = true;
       connectBtn.textContent = 'Connecting...';
       hideError();
 
       try {
-        // Use the original single-server connect API
         const result = await window.electronAPI.connect({
-          server_address: serverAddress,
-          tunnel_url: serverAddress,
+          server_address: apiServer,
+          tunnel_url: apiServer,
           username: username,
           password: password
         });
@@ -631,9 +624,9 @@
           return;
         }
 
-        saveCredentials(serverAddress, username, password);
+        // Save original input (without protocol)
+        saveCredentials(displayServer, username, password);
 
-        // Show connected view
         showConnectedView();
         startStatusCheck();
 
@@ -710,47 +703,18 @@
         window.electronAPI.updateTrayStatus(true);
       }
 
-      // Update server name
-      document.getElementById('connectedServer').textContent = getHostname(localStorage.getItem('wiresocket_server') || '-');
+      // Show server without protocol
+      const savedServer = localStorage.getItem('wiresocket_server') || '-';
+      document.getElementById('connectedServer').textContent = savedServer.replace(/^https?:\/\//, '');
 
-      // Update IP
       document.getElementById('assignedIP').textContent = status.assigned_ip || '-';
 
-      // Update connected since
       if (status.connected_since) {
         document.getElementById('connectedSince').textContent = new Date(status.connected_since).toLocaleString();
       }
 
-      // Update traffic stats
       document.getElementById('rxBytes').textContent = formatBytes(status.rx_bytes || 0);
       document.getElementById('txBytes').textContent = formatBytes(status.tx_bytes || 0);
-
-      // Update routes list
-      renderRoutesList(status.active_routes || status.available_routes || []);
-    }
-
-    function renderRoutesList(routes) {
-      const routesList = document.getElementById('routesList');
-
-      if (!routes || routes.length === 0) {
-        routesList.innerHTML = '<div class="empty-state">No routes configured</div>';
-        return;
-      }
-
-      let html = '';
-      routes.forEach(route => {
-        html += `<div class="route-item"><span class="route-cidr">${route}</span></div>`;
-      });
-
-      routesList.innerHTML = html;
-    }
-
-    function getHostname(url) {
-      try {
-        return new URL(url).hostname;
-      } catch {
-        return url;
-      }
     }
 
     function formatBytes(bytes) {
@@ -809,7 +773,7 @@
       }
     }
 
-    // Dev tools activation - click logo 4 times
+    // Dev tools activation
     let devToolsClickCount = 0;
     let devToolsClickTimer = null;
     const appTitle = document.getElementById('appTitle');
@@ -828,12 +792,29 @@
     });
 
     // Settings modal functions
+    function switchTab(event, tabName) {
+      event.stopPropagation();
+
+      document.querySelectorAll('.modal-tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      event.target.classList.add('active');
+
+      document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.remove('active');
+      });
+      document.getElementById('tab-' + tabName).classList.add('active');
+    }
+
     function openSettings() {
       document.getElementById('settingsModal').classList.remove('hidden');
+      loadRouteSettings();
+      document.getElementById('routeSearch').value = '';
       document.getElementById('currentPassword').value = '';
       document.getElementById('newPassword').value = '';
       document.getElementById('confirmPassword').value = '';
       hidePasswordMessage();
+      hideRouteMessage();
     }
 
     function closeSettings() {
@@ -842,6 +823,92 @@
 
     function closeSettingsOnOverlay(event) {
       if (event.target.id === 'settingsModal') closeSettings();
+    }
+
+    async function loadRouteSettings() {
+      try {
+        if (window.electronAPI && window.electronAPI.getRouteSettings) {
+          const result = await window.electronAPI.getRouteSettings();
+          if (result.success) {
+            currentRoutes = result.data.available_routes || [];
+            excludedRoutes = result.data.excluded_routes || [];
+            renderRouteList();
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load route settings:', e);
+      }
+    }
+
+    function renderRouteList(searchTerm = '') {
+      const routeList = document.getElementById('routeList');
+
+      if (currentRoutes.length === 0) {
+        routeList.innerHTML = '<div class="empty-state">Connect to a server to see available routes</div>';
+        return;
+      }
+
+      const filteredRoutes = searchTerm
+        ? currentRoutes.filter(route => route.toLowerCase().includes(searchTerm.toLowerCase()))
+        : currentRoutes;
+
+      if (filteredRoutes.length === 0) {
+        routeList.innerHTML = '<div class="empty-state">No matching routes</div>';
+        return;
+      }
+
+      let html = '';
+      filteredRoutes.forEach((route, index) => {
+        const isExcluded = excludedRoutes.includes(route);
+        html += `
+          <div class="route-item">
+            <input type="checkbox" id="route-${index}" ${!isExcluded ? 'checked' : ''} onchange="toggleRoute('${route}', this.checked)">
+            <label for="route-${index}">${route}</label>
+          </div>
+        `;
+      });
+
+      routeList.innerHTML = html;
+    }
+
+    function filterRoutes() {
+      const searchTerm = document.getElementById('routeSearch').value;
+      renderRouteList(searchTerm);
+    }
+
+    async function toggleRoute(route, isEnabled) {
+      if (isEnabled) {
+        excludedRoutes = excludedRoutes.filter(r => r !== route);
+      } else {
+        if (!excludedRoutes.includes(route)) {
+          excludedRoutes.push(route);
+        }
+      }
+
+      try {
+        if (window.electronAPI && window.electronAPI.updateRouteSettings) {
+          const result = await window.electronAPI.updateRouteSettings(excludedRoutes);
+          if (result.success) {
+            showRouteMessage('Routes updated', 'success');
+          } else {
+            showRouteMessage(result.error || 'Failed to update routes', 'error');
+          }
+        }
+      } catch (e) {
+        showRouteMessage('Failed to update routes', 'error');
+      }
+    }
+
+    function showRouteMessage(message, type) {
+      const el = document.getElementById('routeMessage');
+      el.textContent = message;
+      el.className = type === 'success' ? 'success-message' : 'error-message';
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 2000);
+    }
+
+    function hideRouteMessage() {
+      document.getElementById('routeMessage').classList.add('hidden');
     }
 
     async function changePassword() {
@@ -874,7 +941,7 @@
 
       try {
         const result = await window.electronAPI.changePassword({
-          server_address: serverAddress,
+          server_address: normalizeServerUrl(serverAddress),
           current_password: currentPassword,
           new_password: newPassword
         });
