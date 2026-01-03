@@ -1,25 +1,19 @@
 ; Custom NSIS installer script for WireSocket on Windows
-; Note: Errors from stopping/deleting non-existent service are expected and ignored
+; Using ExecWait for more reliable service management
 
 ; This runs BEFORE files are extracted - stop service and kill process first
 !macro customInit
-  ; Stop any existing service (silently, ignore errors)
-  nsExec::ExecToStack 'net stop WireSocketClient'
-  Pop $0
-  Pop $1
+  ; Stop any existing service (ignore errors if not running)
+  ExecWait 'net stop WireSocketClient' $0
 
-  ; Force kill the process if still running (silently)
-  nsExec::ExecToStack 'taskkill /F /IM wire-socket-client.exe'
-  Pop $0
-  Pop $1
+  ; Force kill the process if still running
+  ExecWait 'taskkill /F /IM wire-socket-client.exe' $0
 
-  ; Force delete the service (silently)
-  nsExec::ExecToStack 'sc delete WireSocketClient'
-  Pop $0
-  Pop $1
+  ; Delete the service registration
+  ExecWait 'sc delete WireSocketClient' $0
 
-  ; Wait for cleanup
-  Sleep 1000
+  ; Wait for cleanup to complete
+  Sleep 2000
 !macroend
 
 ; This runs AFTER files are installed
@@ -27,32 +21,32 @@
   DetailPrint "Installing WireSocket Client Service..."
 
   ; Install the service using the backend binary
-  nsExec::ExecToLog '"$INSTDIR\resources\bin\wire-socket-client.exe" -service install'
+  ExecWait '"$INSTDIR\resources\bin\wire-socket-client.exe" -service install' $0
+  DetailPrint "Service install returned: $0"
 
   ; Start the service
   DetailPrint "Starting WireSocket Client Service..."
-  nsExec::ExecToLog 'net start WireSocketClient'
+  ExecWait 'net start WireSocketClient' $0
+  DetailPrint "Service start returned: $0"
 
   DetailPrint "WireSocket installation complete!"
 !macroend
 
 !macro customUnInstall
-  ; Stop and remove service if it exists
+  ; Stop the service
   DetailPrint "Stopping WireSocket service..."
-  nsExec::ExecToStack 'net stop WireSocketClient'
-  Pop $0
-  Pop $1
+  ExecWait 'net stop WireSocketClient' $0
 
   ; Force kill the process
-  nsExec::ExecToStack 'taskkill /F /IM wire-socket-client.exe'
-  Pop $0
-  Pop $1
+  ExecWait 'taskkill /F /IM wire-socket-client.exe' $0
 
+  ; Uninstall the service
   DetailPrint "Removing WireSocket service..."
-  nsExec::ExecToLog '"$INSTDIR\resources\bin\wire-socket-client.exe" -service uninstall'
+  ExecWait '"$INSTDIR\resources\bin\wire-socket-client.exe" -service uninstall' $0
 
-  ; Fallback: force delete service (silently)
-  nsExec::ExecToStack 'sc delete WireSocketClient'
-  Pop $0
-  Pop $1
+  ; Force delete service as fallback
+  ExecWait 'sc delete WireSocketClient' $0
+
+  ; Wait for cleanup
+  Sleep 1000
 !macroend
