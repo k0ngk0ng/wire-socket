@@ -74,27 +74,6 @@
       animation: pulse 1.5s ease-in-out infinite;
     }
 
-    .status-indicator {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      margin-right: 8px;
-    }
-
-    .status-indicator.disconnected {
-      background-color: #e74c3c;
-    }
-
-    .status-indicator.connected {
-      background-color: #2ecc71;
-    }
-
-    .status-indicator.connecting {
-      background-color: #f39c12;
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
@@ -238,7 +217,6 @@
       color: #667eea;
     }
 
-    /* Loading view styles */
     .loading-view {
       text-align: center;
       padding: 40px 20px;
@@ -291,7 +269,6 @@
       accent-color: #667eea;
     }
 
-    /* Settings button */
     .settings-btn {
       background: none;
       border: none;
@@ -306,7 +283,6 @@
       opacity: 1;
     }
 
-    /* Modal styles */
     .modal-overlay {
       position: fixed;
       top: 0;
@@ -358,64 +334,7 @@
     }
 
     .modal-body {
-      padding: 0;
-    }
-
-    .modal-tabs {
-      display: flex;
-      border-bottom: 1px solid #e0e0e0;
-    }
-
-    .modal-tab {
-      flex: 1;
-      padding: 12px 16px;
-      background: none;
-      border: none;
-      font-size: 14px;
-      color: #666;
-      cursor: pointer;
-      transition: all 0.2s;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-    }
-
-    .modal-tab:hover {
-      color: #667eea;
-      background: #f8f9ff;
-    }
-
-    .modal-tab.active {
-      color: #667eea;
-      border-bottom-color: #667eea;
-      font-weight: 500;
-    }
-
-    .tab-content {
       padding: 20px;
-    }
-
-    .tab-pane {
-      display: none;
-    }
-
-    .tab-pane.active {
-      display: block;
-    }
-
-    .modal-section {
-      margin-bottom: 25px;
-    }
-
-    .modal-section:last-child {
-      margin-bottom: 0;
-    }
-
-    .modal-section h3 {
-      font-size: 14px;
-      color: #666;
-      margin: 0 0 15px 0;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
     }
 
     .route-list {
@@ -436,57 +355,17 @@
       border-bottom: none;
     }
 
-    .route-item input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      margin-right: 10px;
-      accent-color: #667eea;
-    }
-
-    .route-item label {
-      font-size: 13px;
-      color: #333;
-      font-family: monospace;
-      margin: 0;
-    }
-
-    .route-item.excluded label {
-      color: #999;
-      text-decoration: line-through;
-    }
-
     .route-cidr {
       font-size: 13px;
       color: #333;
       font-family: monospace;
     }
 
-    .tunnel-group {
-      border-bottom: 1px solid #e0e0e0;
-    }
-
-    .tunnel-group:last-child {
-      border-bottom: none;
-    }
-
-    .tunnel-group-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 12px;
-      background: #f5f5f5;
-      font-size: 13px;
-      font-weight: 500;
-    }
-
-    .tunnel-name {
-      color: #333;
-    }
-
-    .tunnel-ip {
+    .empty-state {
+      padding: 20px;
+      text-align: center;
       color: #999;
-      font-family: monospace;
-      font-size: 12px;
+      font-size: 14px;
     }
 
     .success-message {
@@ -495,27 +374,6 @@
       padding: 12px;
       border-radius: 8px;
       margin-top: 15px;
-      font-size: 14px;
-    }
-
-    .btn-secondary {
-      background: #f0f0f0;
-      color: #333;
-    }
-
-    .btn-secondary:hover {
-      background: #e0e0e0;
-    }
-
-    .btn-small {
-      padding: 10px 16px;
-      font-size: 14px;
-    }
-
-    .empty-state {
-      padding: 20px;
-      text-align: center;
-      color: #999;
       font-size: 14px;
     }
   </style>
@@ -596,10 +454,10 @@
         </div>
       </div>
 
-      <!-- Tunnels Section -->
-      <div id="tunnelsSection" class="status-box" style="margin-top: 15px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Available Tunnels</h3>
-        <div id="tunnelsList" class="route-list" style="max-height: 150px;"></div>
+      <!-- Routes Section -->
+      <div id="routesSection" class="status-box" style="margin-top: 15px;">
+        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Active Routes</h3>
+        <div id="routesList" class="route-list" style="max-height: 150px;"></div>
       </div>
 
       <button class="btn btn-danger" style="margin-top: 20px;" onclick="disconnect()">
@@ -612,49 +470,26 @@
     <div id="settingsModal" class="modal-overlay hidden" onclick="closeSettingsOnOverlay(event)">
       <div class="modal" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h2>Settings</h2>
+          <h2>Change Password</h2>
           <button class="modal-close" onclick="closeSettings()">&times;</button>
         </div>
-        <div class="modal-tabs">
-          <button class="modal-tab active" onclick="switchTab(event, 'routes')">Routes</button>
-          <button class="modal-tab" onclick="switchTab(event, 'password')">Password</button>
-        </div>
         <div class="modal-body">
-          <div class="tab-content">
-            <!-- Routes Tab -->
-            <div id="tab-routes" class="tab-pane active">
-              <p style="font-size: 13px; color: #666; margin: 0 0 10px 0;">
-                Routes configured for each connected tunnel.
-              </p>
-              <div style="margin-bottom: 10px;">
-                <input type="text" id="routeSearch" placeholder="Search CIDR..." oninput="filterRoutes()" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;">
-              </div>
-              <div id="routeList" class="route-list">
-                <div class="empty-state">Connect to a server to see available routes</div>
-              </div>
-              <div id="routeMessage" class="hidden"></div>
-            </div>
-
-            <!-- Password Tab -->
-            <div id="tab-password" class="tab-pane">
-              <div class="form-group" style="margin-bottom: 12px;">
-                <label for="currentPassword" style="margin-bottom: 5px;">Current Password</label>
-                <input type="password" id="currentPassword" placeholder="Enter current password">
-              </div>
-              <div class="form-group" style="margin-bottom: 12px;">
-                <label for="newPassword" style="margin-bottom: 5px;">New Password</label>
-                <input type="password" id="newPassword" placeholder="At least 8 characters">
-              </div>
-              <div class="form-group" style="margin-bottom: 12px;">
-                <label for="confirmPassword" style="margin-bottom: 5px;">Confirm New Password</label>
-                <input type="password" id="confirmPassword" placeholder="Confirm new password">
-              </div>
-              <button class="btn btn-primary btn-small" onclick="changePassword()" id="changePasswordBtn">
-                Change Password
-              </button>
-              <div id="passwordMessage" class="hidden"></div>
-            </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="currentPassword" style="margin-bottom: 5px;">Current Password</label>
+            <input type="password" id="currentPassword" placeholder="Enter current password">
           </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="newPassword" style="margin-bottom: 5px;">New Password</label>
+            <input type="password" id="newPassword" placeholder="At least 8 characters">
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="confirmPassword" style="margin-bottom: 5px;">Confirm New Password</label>
+            <input type="password" id="confirmPassword" placeholder="Confirm new password">
+          </div>
+          <button class="btn btn-primary" onclick="changePassword()" id="changePasswordBtn" style="padding: 10px 16px; font-size: 14px;">
+            Change Password
+          </button>
+          <div id="passwordMessage" class="hidden"></div>
         </div>
       </div>
     </div>
@@ -672,8 +507,6 @@
 
     let statusCheckInterval = null;
     let backendReady = false;
-    let currentSession = null;
-    let tunnelConnections = [];
 
     // Listen for service status from main process
     if (window.electronAPI && window.electronAPI.onServiceStatus) {
@@ -762,7 +595,6 @@
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://' + url;
       }
-      // Remove trailing slash
       return url.replace(/\/+$/, '');
     }
 
@@ -784,31 +616,22 @@
       hideError();
 
       try {
-        // First, login to get tunnels
-        const loginResult = await window.electronAPI.authLogin({
-          auth_url: serverAddress,
+        // Use the original single-server connect API
+        const result = await window.electronAPI.connect({
+          server_address: serverAddress,
+          tunnel_url: serverAddress,
           username: username,
           password: password
         });
 
-        if (!loginResult.success) {
-          showError(loginResult.error || 'Login failed');
+        if (!result.success) {
+          showError(result.error || 'Connection failed');
           connectBtn.disabled = false;
           connectBtn.textContent = 'Connect to VPN';
           return;
         }
 
-        currentSession = loginResult.data;
         saveCredentials(serverAddress, username, password);
-
-        // Auto-connect to first tunnel if available
-        if (currentSession.tunnels && currentSession.tunnels.length > 0) {
-          const firstTunnel = currentSession.tunnels[0];
-          const connectResult = await window.electronAPI.connectTunnel({ tunnel_id: firstTunnel.id });
-          if (!connectResult.success) {
-            console.log('Auto-connect failed:', connectResult.error);
-          }
-        }
 
         // Show connected view
         showConnectedView();
@@ -823,19 +646,9 @@
 
     async function disconnect() {
       try {
-        // Disconnect all tunnels
-        await window.electronAPI.disconnectAllTunnels();
-
-        // Logout from all servers
-        if (currentSession) {
-          await window.electronAPI.authLogout({ auth_url: localStorage.getItem('wiresocket_server') });
-        }
-
-        currentSession = null;
-        tunnelConnections = [];
+        await window.electronAPI.disconnect();
         stopStatusCheck();
         showLoginForm();
-
       } catch (e) {
         console.error('Disconnect failed:', e);
         showConnectedError('Disconnect failed: ' + e.message);
@@ -846,16 +659,19 @@
       if (!backendReady) return;
 
       try {
-        const result = await window.electronAPI.getTunnelsStatus();
+        const result = await window.electronAPI.getStatus();
 
-        if (result.success) {
-          const sessions = result.data.sessions || [];
-          tunnelConnections = result.data.connections || [];
+        if (result.success && result.data) {
+          const status = result.data;
 
-          if (sessions.length > 0) {
-            currentSession = sessions[0];
+          if (status.state === 'connected') {
             showConnectedView();
-            updateConnectedInfo(result.data);
+            updateConnectedInfo(status);
+            startStatusCheck();
+          } else if (status.state === 'connecting') {
+            showConnectedView();
+            statusText.textContent = 'Connecting...';
+            statusText.style.color = '#f39c12';
             startStatusCheck();
           } else {
             showLoginForm();
@@ -886,121 +702,47 @@
       connectedView.classList.remove('hidden');
     }
 
-    function updateConnectedInfo(data) {
-      const sessions = data.sessions || [];
-      const connections = data.connections || [];
-      const connectedTunnels = connections.filter(c => c.state === 'connected');
+    function updateConnectedInfo(status) {
+      statusText.textContent = 'Connected';
+      statusText.style.color = '#2ecc71';
 
-      // Update status text
-      if (connectedTunnels.length > 0) {
-        statusText.textContent = 'Connected';
-        statusText.style.color = '#2ecc71';
-        if (window.electronAPI && window.electronAPI.updateTrayStatus) {
-          window.electronAPI.updateTrayStatus(true);
-        }
-      } else {
-        statusText.textContent = 'Logged in';
-        statusText.style.color = '#f39c12';
-        if (window.electronAPI && window.electronAPI.updateTrayStatus) {
-          window.electronAPI.updateTrayStatus(false);
-        }
+      if (window.electronAPI && window.electronAPI.updateTrayStatus) {
+        window.electronAPI.updateTrayStatus(true);
       }
 
       // Update server name
-      if (sessions.length > 0) {
-        const session = sessions[0];
-        document.getElementById('connectedServer').textContent = getHostname(session.auth_url);
-      }
+      document.getElementById('connectedServer').textContent = getHostname(localStorage.getItem('wiresocket_server') || '-');
 
-      // Update IP and stats from first connected tunnel
-      if (connectedTunnels.length > 0) {
-        const conn = connectedTunnels[0];
-        document.getElementById('assignedIP').textContent = conn.assigned_ip || '-';
-        if (conn.connected_at) {
-          document.getElementById('connectedSince').textContent = new Date(conn.connected_at).toLocaleString();
-        }
-      } else {
-        document.getElementById('assignedIP').textContent = '-';
-        document.getElementById('connectedSince').textContent = '-';
+      // Update IP
+      document.getElementById('assignedIP').textContent = status.assigned_ip || '-';
+
+      // Update connected since
+      if (status.connected_since) {
+        document.getElementById('connectedSince').textContent = new Date(status.connected_since).toLocaleString();
       }
 
       // Update traffic stats
-      document.getElementById('rxBytes').textContent = formatBytes(data.total_rx || 0);
-      document.getElementById('txBytes').textContent = formatBytes(data.total_tx || 0);
+      document.getElementById('rxBytes').textContent = formatBytes(status.rx_bytes || 0);
+      document.getElementById('txBytes').textContent = formatBytes(status.tx_bytes || 0);
 
-      // Update tunnels list
-      renderTunnelsList(sessions, connections);
+      // Update routes list
+      renderRoutesList(status.active_routes || status.available_routes || []);
     }
 
-    function renderTunnelsList(sessions, connections) {
-      const tunnelsList = document.getElementById('tunnelsList');
+    function renderRoutesList(routes) {
+      const routesList = document.getElementById('routesList');
 
-      if (!sessions || sessions.length === 0) {
-        tunnelsList.innerHTML = '<div class="empty-state">No tunnels available</div>';
+      if (!routes || routes.length === 0) {
+        routesList.innerHTML = '<div class="empty-state">No routes configured</div>';
         return;
       }
 
       let html = '';
-      sessions.forEach(session => {
-        const tunnels = session.tunnels || [];
-        tunnels.forEach(tunnel => {
-          const conn = connections.find(c => c.id === tunnel.id);
-          const isConnected = conn && conn.state === 'connected';
-          const isConnecting = conn && conn.state === 'connecting';
-          const statusIcon = isConnected ? '🟢' : isConnecting ? '🟡' : '⚪';
-
-          html += `
-            <div class="route-item" style="justify-content: space-between; padding: 8px 12px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span>${statusIcon}</span>
-                <div>
-                  <div style="font-weight: 500; font-size: 13px;">${tunnel.name || tunnel.id}</div>
-                  <div style="font-size: 11px; color: #999;">${tunnel.region || ''}</div>
-                </div>
-              </div>
-              ${isConnected || isConnecting
-                ? `<button class="btn btn-secondary btn-small" style="padding: 4px 10px; font-size: 11px;" onclick="disconnectTunnel('${tunnel.id}')">Disconnect</button>`
-                : `<button class="btn btn-primary btn-small" style="padding: 4px 10px; font-size: 11px;" onclick="connectTunnel('${tunnel.id}')">Connect</button>`
-              }
-            </div>
-          `;
-        });
+      routes.forEach(route => {
+        html += `<div class="route-item"><span class="route-cidr">${route}</span></div>`;
       });
 
-      tunnelsList.innerHTML = html || '<div class="empty-state">No tunnels available</div>';
-    }
-
-    async function connectTunnel(tunnelId) {
-      try {
-        const result = await window.electronAPI.connectTunnel({ tunnel_id: tunnelId });
-        if (!result.success) {
-          showConnectedError(result.error || 'Failed to connect tunnel');
-        }
-        await refreshStatus();
-      } catch (e) {
-        showConnectedError('Failed to connect: ' + e.message);
-      }
-    }
-
-    async function disconnectTunnel(tunnelId) {
-      try {
-        await window.electronAPI.disconnectTunnel(tunnelId);
-        await refreshStatus();
-      } catch (e) {
-        showConnectedError('Failed to disconnect: ' + e.message);
-      }
-    }
-
-    async function refreshStatus() {
-      try {
-        const result = await window.electronAPI.getTunnelsStatus();
-        if (result.success) {
-          tunnelConnections = result.data.connections || [];
-          updateConnectedInfo(result.data);
-        }
-      } catch (e) {
-        console.error('Failed to refresh status:', e);
-      }
+      routesList.innerHTML = html;
     }
 
     function getHostname(url) {
@@ -1040,7 +782,24 @@
       if (statusCheckInterval) {
         clearInterval(statusCheckInterval);
       }
-      statusCheckInterval = setInterval(refreshStatus, 3000);
+      statusCheckInterval = setInterval(async () => {
+        try {
+          const result = await window.electronAPI.getStatus();
+          if (result.success && result.data) {
+            if (result.data.state === 'connected') {
+              updateConnectedInfo(result.data);
+            } else if (result.data.state === 'disconnected' || result.data.state === 'failed') {
+              stopStatusCheck();
+              showLoginForm();
+              if (result.data.error) {
+                showError(result.data.error);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Status refresh failed:', e);
+        }
+      }, 3000);
     }
 
     function stopStatusCheck() {
@@ -1069,21 +828,8 @@
     });
 
     // Settings modal functions
-    let currentRoutes = [];
-    let excludedRoutes = [];
-
-    function switchTab(event, tabName) {
-      event.stopPropagation();
-      document.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
-      event.target.classList.add('active');
-      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-      document.getElementById('tab-' + tabName).classList.add('active');
-    }
-
     function openSettings() {
       document.getElementById('settingsModal').classList.remove('hidden');
-      loadRouteSettings();
-      document.getElementById('routeSearch').value = '';
       document.getElementById('currentPassword').value = '';
       document.getElementById('newPassword').value = '';
       document.getElementById('confirmPassword').value = '';
@@ -1096,56 +842,6 @@
 
     function closeSettingsOnOverlay(event) {
       if (event.target.id === 'settingsModal') closeSettings();
-    }
-
-    async function loadRouteSettings() {
-      try {
-        const result = await window.electronAPI.getTunnelsStatus();
-        if (result.success && result.data.connections) {
-          const connected = result.data.connections.filter(c => c.state === 'connected');
-          renderTunnelRouteList(connected);
-        }
-      } catch (e) {
-        console.error('Failed to load route settings:', e);
-      }
-    }
-
-    function renderTunnelRouteList(connections, searchTerm = '') {
-      const routeList = document.getElementById('routeList');
-
-      if (!connections || connections.length === 0) {
-        routeList.innerHTML = '<div class="empty-state">Connect to a tunnel to see available routes</div>';
-        return;
-      }
-
-      let html = '';
-      connections.forEach(conn => {
-        const routes = conn.available_routes || [];
-        const filtered = searchTerm ? routes.filter(r => r.toLowerCase().includes(searchTerm.toLowerCase())) : routes;
-
-        html += `<div class="tunnel-group">
-          <div class="tunnel-group-header">
-            <span class="tunnel-name">${conn.name || conn.id}</span>
-            <span class="tunnel-ip">${conn.assigned_ip || ''}</span>
-          </div>`;
-
-        if (filtered.length === 0) {
-          html += '<div class="empty-state" style="padding: 10px;">No routes</div>';
-        } else {
-          filtered.forEach(route => {
-            html += `<div class="route-item"><span class="route-cidr">${route}</span></div>`;
-          });
-        }
-        html += '</div>';
-      });
-
-      routeList.innerHTML = html;
-    }
-
-    function filterRoutes() {
-      const searchTerm = document.getElementById('routeSearch').value;
-      const connected = tunnelConnections.filter(c => c.state === 'connected');
-      renderTunnelRouteList(connected, searchTerm);
     }
 
     async function changePassword() {
@@ -1168,9 +864,7 @@
       }
 
       const serverAddress = localStorage.getItem('wiresocket_server');
-      const token = localStorage.getItem('wiresocket_token');
-
-      if (!serverAddress || !token) {
+      if (!serverAddress) {
         showPasswordMessage('Please connect to a server first', 'error');
         return;
       }
@@ -1181,7 +875,6 @@
       try {
         const result = await window.electronAPI.changePassword({
           server_address: serverAddress,
-          token: token,
           current_password: currentPassword,
           new_password: newPassword
         });
