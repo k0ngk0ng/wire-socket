@@ -756,8 +756,18 @@
       checkStatus();
     }
 
+    // Ensure URL has protocol scheme
+    function normalizeServerUrl(url) {
+      url = url.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      // Remove trailing slash
+      return url.replace(/\/+$/, '');
+    }
+
     async function connect() {
-      const serverAddress = document.getElementById('serverAddress').value.trim();
+      let serverAddress = document.getElementById('serverAddress').value.trim();
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
 
@@ -765,6 +775,9 @@
         showError('Please fill in all fields');
         return;
       }
+
+      // Normalize the server URL
+      serverAddress = normalizeServerUrl(serverAddress);
 
       connectBtn.disabled = true;
       connectBtn.textContent = 'Connecting...';
