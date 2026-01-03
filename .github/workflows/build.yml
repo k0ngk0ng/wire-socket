@@ -189,6 +189,15 @@ jobs:
           mkdir -p ../frontend/resources/bin/win32
           GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/win32/wire-socket-client.exe ./cmd/client
 
+      - name: Download wintun driver
+        shell: bash
+        run: |
+          WINTUN_VERSION="0.14.1"
+          curl -L "https://www.wintun.net/builds/wintun-${WINTUN_VERSION}.zip" -o wintun.zip
+          unzip -o wintun.zip -d wintun
+          cp wintun/wintun/bin/amd64/wintun.dll client/frontend/resources/bin/win32/
+          rm -rf wintun wintun.zip
+
       - name: Install dependencies
         working-directory: client/frontend
         run: npm ci --ignore-scripts
