@@ -11,6 +11,9 @@ import (
 	"strings"
 )
 
+// tunGatewayIP stores the TUN interface gateway IP for routing
+var tunGatewayIP string
+
 // setTunAddress sets the IP address on the TUN interface (Windows)
 func setTunAddress(name, address string) error {
 	// Parse the address
@@ -22,6 +25,9 @@ func setTunAddress(name, address string) error {
 	mask := ipMaskToStringWin(ipNet.Mask)
 
 	log.Printf("Setting TUN address: interface=%s, ip=%s, mask=%s", name, ip.String(), mask)
+
+	// Store the IP for routing - we'll use the interface's own IP as the "gateway" for on-link routes
+	tunGatewayIP = ip.String()
 
 	// Use netsh to set the address
 	cmd := exec.Command("netsh", "interface", "ip", "set", "address",
@@ -79,10 +85,15 @@ func setRoutes(name string, routes []net.IPNet) error {
 	for _, route := range routes {
 		mask := ipMaskToStringWin(route.Mask)
 
-		// Use route add with interface index
-		// Syntax: route add <destination> mask <netmask> <gateway> if <interface_index>
-		// For TUN, we use 0.0.0.0 as gateway and specify the interface
-		cmd := exec.Command("route", "add", route.IP.String(), "mask", mask, "0.0.0.0", "if", strconv.Itoa(ifIndex))
+		// Use route add with interface index and the TUN's IP as gateway
+		// This creates an on-link route through the TUN interface
+		gateway := tunGatewayIP
+		if gateway == "" {
+			gateway = "0.0.0.0"
+		}
+
+		cmd := exec.Command("route", "add", route.IP.String(), "mask", mask, gateway, "if", strconv.Itoa(ifIndex))
+		log.Printf("Executing: route add %s mask %s %s if %d", route.IP.String(), mask, gateway, ifIndex)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			outputStr := string(output)
@@ -94,7 +105,7 @@ func setRoutes(name string, routes []net.IPNet) error {
 				}
 			}
 		} else {
-			log.Printf("Added route %s via interface %d", route.String(), ifIndex)
+			log.Printf("Added route %s via interface %d (gateway %s)", route.String(), ifIndex, gateway)
 		}
 	}
 	return nil
@@ -115,11 +126,22 @@ func addRouteNetsh(name string, route net.IPNet) error {
 	ones, _ := route.Mask.Size()
 	prefix := fmt.Sprintf("%s/%d", route.IP.String(), ones)
 
-	cmd := exec.Command("netsh", "interface", "ipv4", "add", "route",
-		prefix,
-		fmt.Sprintf("interface=%s", name),
-		"store=active")
+	// Use nexthop parameter for on-link routes
+	var cmd *exec.Cmd
+	if tunGatewayIP != "" {
+		cmd = exec.Command("netsh", "interface", "ipv4", "add", "route",
+			prefix,
+			fmt.Sprintf("interface=%s", name),
+			fmt.Sprintf("nexthop=%s", tunGatewayIP),
+			"store=active")
+	} else {
+		cmd = exec.Command("netsh", "interface", "ipv4", "add", "route",
+			prefix,
+			fmt.Sprintf("interface=%s", name),
+			"store=active")
+	}
 
+	log.Printf("Executing netsh: %v", cmd.Args)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		outputStr := string(output)
