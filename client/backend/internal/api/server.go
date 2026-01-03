@@ -57,6 +57,11 @@ func (s *Server) setupRoutes() {
 		api.POST("/connect", s.connect)
 		api.POST("/disconnect", s.disconnect)
 		api.GET("/status", s.getStatus)
+		api.GET("/servers", s.getServers)
+
+		// Route management
+		api.GET("/routes/settings", s.getRouteSettings)
+		api.PUT("/routes/settings", s.updateRouteSettings)
 
 		// Password management
 		api.POST("/change-password", s.changePassword)
@@ -122,6 +127,46 @@ func (s *Server) disconnect(c *gin.Context) {
 func (s *Server) getStatus(c *gin.Context) {
 	status := s.connMgr.GetStatus()
 	c.JSON(http.StatusOK, status)
+}
+
+func (s *Server) getServers(c *gin.Context) {
+	servers := s.connMgr.GetServers()
+	c.JSON(http.StatusOK, gin.H{
+		"servers": servers,
+	})
+}
+
+func (s *Server) getRouteSettings(c *gin.Context) {
+	settings := s.connMgr.GetRouteSettings()
+	availableRoutes := s.connMgr.GetAvailableRoutes()
+	activeRoutes := s.connMgr.GetActiveRoutes()
+
+	c.JSON(http.StatusOK, gin.H{
+		"excluded_routes":  settings.ExcludedRoutes,
+		"available_routes": availableRoutes,
+		"active_routes":    activeRoutes,
+	})
+}
+
+func (s *Server) updateRouteSettings(c *gin.Context) {
+	var req struct {
+		ExcludedRoutes []string `json:"excluded_routes"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if err := s.connMgr.SetExcludedRoutes(req.ExcludedRoutes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "route settings updated",
+		"excluded_routes": req.ExcludedRoutes,
+	})
 }
 
 func (s *Server) changePassword(c *gin.Context) {
