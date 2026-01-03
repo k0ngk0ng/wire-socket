@@ -94,7 +94,6 @@ See [docs/](docs/) for full documentation:
 - [CLAUDE.md](docs/CLAUDE.md) - Development guide for Claude Code
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture
 - [DEPLOY.md](docs/DEPLOY.md) - Server deployment (systemd, Docker)
-- [MULTI-TUNNEL-DEPLOYMENT.md](docs/MULTI-TUNNEL-DEPLOYMENT.md) - Multi-tunnel architecture (v0.6.1+)
 - [DOCKER.md](docs/DOCKER.md) - Docker deployment
 - [PACKAGING.md](docs/PACKAGING.md) - Client packaging
 
