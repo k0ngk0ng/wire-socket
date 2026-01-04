@@ -581,8 +581,28 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
+  // If already quitting, let it proceed
+  if (isQuitting) {
+    return;
+  }
+
+  // Prevent immediate quit to allow cleanup
+  event.preventDefault();
   isQuitting = true;
+
+  // Try to disconnect VPN before quitting
+  try {
+    console.log('Disconnecting VPN before quit...');
+    await axios.post(`${getApiBase()}/api/disconnect`, {}, { timeout: 5000 });
+    console.log('VPN disconnected successfully');
+  } catch (error) {
+    // Ignore errors - service might not be running or already disconnected
+    console.log('Disconnect on quit:', error.message);
+  }
+
+  // Now actually quit
+  app.quit();
 });
 
 // IPC Handlers
