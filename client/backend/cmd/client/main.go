@@ -157,6 +157,12 @@ func main() {
 		DisplayName:      "WireSocket Client Service",
 		Description:      "Manages VPN connections with WireGuard and wstunnel",
 		WorkingDirectory: exeDir, // Set working directory for service (needed for wintun.dll)
+		Option: service.KeyValue{
+			// macOS launchd: start service at system boot
+			"RunAtLoad": true,
+			// Windows: start automatically
+			"StartType": "automatic",
+		},
 	}
 
 	prg := &Program{}
