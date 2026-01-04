@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
+	"time"
 	"wire-socket-client/internal/api"
 	"wire-socket-client/internal/connection"
 
@@ -24,6 +28,13 @@ const (
 	DefaultPort  = 41945
 	MaxPortTries = 10
 )
+
+// CLIConfig represents the configuration file for CLI mode
+type CLIConfig struct {
+	Server   string `json:"server"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
 
 // Program implements the service.Interface
 type Program struct {
@@ -48,7 +59,7 @@ func getPortFilePath() string {
 	case "windows":
 		// Use ProgramData which is accessible to both SYSTEM and user accounts
 		dir = os.Getenv("ProgramData")
-		if dir == "" {
+		if dir == ""  {
 			dir = "C:\\ProgramData"
 		}
 		dir = filepath.Join(dir, "WireSocket")
@@ -132,11 +143,188 @@ func (p *Program) Stop(s service.Service) error {
 	return nil
 }
 
+// getDefaultConfigPath returns the default path for CLI config file
+func getDefaultConfigPath() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "/etc/wiresocket/client.json"
+	case "darwin":
+		return "/etc/wiresocket/client.json"
+	default:
+		return filepath.Join(os.Getenv("ProgramData"), "WireSocket", "client.json")
+	}
+}
+
+// loadCLIConfig loads configuration from a JSON file
+func loadCLIConfig(path string) (*CLIConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var config CLIConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	return &config, nil
+}
+
+// runCLIConnect runs the VPN connection in CLI mode (foreground)
+func runCLIConnect(server, username, password string, daemon bool) error {
+	log.Printf("WireSocket CLI Client v%s", Version)
+	log.Printf("Connecting to %s as %s...", server, username)
+
+	// Initialize connection manager
+	connMgr, err := connection.NewManager()
+	if err != nil {
+		return fmt.Errorf("failed to create connection manager: %w", err)
+	}
+	defer connMgr.Close()
+
+	// Connect
+	err = connMgr.Connect(connection.ConnectRequest{
+		ServerAddress: server,
+		TunnelURL:     server,
+		Username:      username,
+		Password:      password,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initiate connection: %w", err)
+	}
+
+	// Wait for connection to complete
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			connMgr.Disconnect()
+			return fmt.Errorf("connection timed out")
+		case <-ticker.C:
+			status := connMgr.GetStatus()
+			switch status.State {
+			case connection.StateConnected:
+				log.Printf("Connected! Assigned IP: %s", status.AssignedIP)
+				goto connected
+			case connection.StateFailed:
+				return fmt.Errorf("connection failed: %s", status.Error)
+			case connection.StateConnecting:
+				// Still connecting, continue waiting
+			}
+		}
+	}
+
+connected:
+	if !daemon {
+		log.Println("VPN connected. Press Ctrl+C to disconnect...")
+	} else {
+		log.Println("VPN connected in daemon mode.")
+	}
+
+	// Handle signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Status ticker for daemon mode
+	statusTicker := time.NewTicker(60 * time.Second)
+	defer statusTicker.Stop()
+
+	for {
+		select {
+		case sig := <-sigChan:
+			log.Printf("Received signal %v, disconnecting...", sig)
+			connMgr.Disconnect()
+			log.Println("Disconnected. Goodbye!")
+			return nil
+		case <-statusTicker.C:
+			status := connMgr.GetStatus()
+			if status.State != connection.StateConnected {
+				log.Printf("Connection lost (state: %s)", status.State)
+				if daemon {
+					// In daemon mode, try to reconnect
+					log.Println("Attempting to reconnect...")
+					err = connMgr.Connect(connection.ConnectRequest{
+						ServerAddress: server,
+						TunnelURL:     server,
+						Username:      username,
+						Password:      password,
+					})
+					if err != nil {
+						log.Printf("Reconnection failed: %v", err)
+					}
+				} else {
+					return fmt.Errorf("connection lost")
+				}
+			} else {
+				log.Printf("Status: Connected | IP: %s | RX: %d bytes | TX: %d bytes",
+					status.AssignedIP, status.RxBytes, status.TxBytes)
+			}
+		}
+	}
+}
+
+// printCLIUsage prints CLI usage information
+func printCLIUsage() {
+	fmt.Println("WireSocket Client - VPN Client")
+	fmt.Printf("Version: %s\n\n", Version)
+	fmt.Println("Usage:")
+	fmt.Println("  wire-socket-client [options]")
+	fmt.Println()
+	fmt.Println("Service Mode (for GUI frontend):")
+	fmt.Println("  wire-socket-client                     Run as service (for systemd/launchd)")
+	fmt.Println("  wire-socket-client -service install    Install as system service")
+	fmt.Println("  wire-socket-client -service uninstall  Uninstall system service")
+	fmt.Println("  wire-socket-client -service start      Start the service")
+	fmt.Println("  wire-socket-client -service stop       Stop the service")
+	fmt.Println()
+	fmt.Println("CLI Mode (direct VPN connection):")
+	fmt.Println("  wire-socket-client connect -server <addr> -user <user> -pass <pass>")
+	fmt.Println("  wire-socket-client connect -config /path/to/config.json")
+	fmt.Println("  wire-socket-client connect -config /path/to/config.json -daemon")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  -version        Show version and exit")
+	fmt.Println("  -help           Show this help message")
+	fmt.Println()
+	fmt.Println("Config file format (JSON):")
+	fmt.Println("  {")
+	fmt.Println("    \"server\": \"https://vpn.example.com\",")
+	fmt.Println("    \"username\": \"user\",")
+	fmt.Println("    \"password\": \"pass\"")
+	fmt.Println("  }")
+	fmt.Println()
+	fmt.Println("Systemd Service (CLI mode):")
+	fmt.Println("  1. Create config file: /etc/wiresocket/client.json")
+	fmt.Println("  2. Install service: wire-socket-client -service install")
+	fmt.Println("  3. Or use provided systemd unit: wiresocket-client.service")
+}
+
 func main() {
-	// Parse command line flags
+	// Check for subcommand first
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "connect":
+			runConnectCommand()
+			return
+		case "help", "-help", "--help":
+			printCLIUsage()
+			return
+		}
+	}
+
+	// Parse command line flags for service mode
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
 	showVersion := flag.Bool("version", false, "Show version and exit")
+	showHelp := flag.Bool("help", false, "Show help message")
 	flag.Parse()
+
+	if *showHelp {
+		printCLIUsage()
+		return
+	}
 
 	if *showVersion {
 		fmt.Printf("wire-socket-client version %s\n", Version)
@@ -191,5 +379,58 @@ func main() {
 	err = s.Run()
 	if err != nil {
 		logger.Error(err)
+	}
+}
+
+// runConnectCommand handles the "connect" subcommand
+func runConnectCommand() {
+	connectCmd := flag.NewFlagSet("connect", flag.ExitOnError)
+	server := connectCmd.String("server", "", "Server address (e.g., https://vpn.example.com)")
+	username := connectCmd.String("user", "", "Username")
+	password := connectCmd.String("pass", "", "Password")
+	configFile := connectCmd.String("config", "", "Path to config file (JSON)")
+	daemon := connectCmd.Bool("daemon", false, "Run in daemon mode (auto-reconnect)")
+
+	connectCmd.Parse(os.Args[2:])
+
+	var cfg *CLIConfig
+
+	// Load from config file if specified
+	if *configFile != "" {
+		var err error
+		cfg, err = loadCLIConfig(*configFile)
+		if err != nil {
+			log.Fatalf("Error loading config: %v", err)
+		}
+	} else if *server == "" {
+		// Try default config path
+		defaultPath := getDefaultConfigPath()
+		if _, err := os.Stat(defaultPath); err == nil {
+			cfg, _ = loadCLIConfig(defaultPath)
+		}
+	}
+
+	// Override with command line arguments
+	if cfg == nil {
+		cfg = &CLIConfig{}
+	}
+	if *server != "" {
+		cfg.Server = *server
+	}
+	if *username != "" {
+		cfg.Username = *username
+	}
+	if *password != "" {
+		cfg.Password = *password
+	}
+
+	// Validate
+	if cfg.Server == "" || cfg.Username == "" || cfg.Password == "" {
+		log.Fatal("Error: server, username, and password are required")
+	}
+
+	// Run connection
+	if err := runCLIConnect(cfg.Server, cfg.Username, cfg.Password, *daemon); err != nil {
+		log.Fatalf("Error: %v", err)
 	}
 }
