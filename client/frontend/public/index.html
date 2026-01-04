@@ -609,32 +609,56 @@
       connectBtn.textContent = 'Connecting...';
       hideError();
 
-      try {
-        const result = await window.electronAPI.connect({
-          server_address: apiServer,
-          tunnel_url: apiServer,
-          username: username,
-          password: password
-        });
+      // Retry logic for when service is starting up
+      const maxRetries = 3;
+      const retryDelay = 1000;
+      let lastError = null;
 
-        if (!result.success) {
-          showError(result.error || 'Connection failed');
-          connectBtn.disabled = false;
-          connectBtn.textContent = 'Connect to VPN';
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const result = await window.electronAPI.connect({
+            server_address: apiServer,
+            tunnel_url: apiServer,
+            username: username,
+            password: password
+          });
+
+          if (!result.success) {
+            lastError = result.error || 'Connection failed';
+            // If it's a service connection error, retry
+            if (lastError.includes('ECONNREFUSED') || lastError.includes('connect') || lastError.includes('backend')) {
+              if (attempt < maxRetries) {
+                console.log(`Connection attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                continue;
+              }
+            }
+            showError(lastError);
+            connectBtn.disabled = false;
+            connectBtn.textContent = 'Connect to VPN';
+            return;
+          }
+
+          // Save original input (without protocol)
+          saveCredentials(displayServer, username, password);
+
+          showConnectedView();
+          startStatusCheck();
           return;
+
+        } catch (e) {
+          lastError = e.message;
+          if (attempt < maxRetries) {
+            console.log(`Connection attempt ${attempt} failed with exception, retrying in ${retryDelay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            continue;
+          }
         }
-
-        // Save original input (without protocol)
-        saveCredentials(displayServer, username, password);
-
-        showConnectedView();
-        startStatusCheck();
-
-      } catch (e) {
-        showError('Connection failed: ' + e.message);
-        connectBtn.disabled = false;
-        connectBtn.textContent = 'Connect to VPN';
       }
+
+      showError('Connection failed: ' + lastError);
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect to VPN';
     }
 
     async function disconnect() {

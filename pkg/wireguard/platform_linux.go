@@ -70,3 +70,8 @@ func setRoutes(name string, routes []net.IPNet) error {
 	}
 	return nil
 }
+
+// cleanupRoutes removes routes on disconnect (no-op on Linux - routes are auto-cleaned)
+func cleanupRoutes() {
+	// On Linux, routes are automatically removed when the TUN interface is destroyed
+}

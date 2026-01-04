@@ -58,3 +58,8 @@ func ipMaskToString(mask net.IPMask) string {
 	}
 	return "255.255.255.0" // Default
 }
+
+// cleanupRoutes removes routes on disconnect (no-op on macOS - routes are auto-cleaned)
+func cleanupRoutes() {
+	// On macOS, routes are automatically removed when the TUN interface is destroyed
+}

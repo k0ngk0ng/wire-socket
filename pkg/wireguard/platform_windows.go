@@ -17,6 +17,12 @@ var tunInterfaceIP net.IP
 // tunGatewayIP stores the VPN gateway IP (e.g., 10.250.99.1)
 var tunGatewayIP net.IP
 
+// activeRoutes stores routes that were added and need to be cleaned up
+var activeRoutes []net.IPNet
+
+// tunInterfaceName stores the TUN interface name for cleanup
+var tunInterfaceName string
+
 // setTunAddress sets the IP address on the TUN interface (Windows)
 func setTunAddress(name, address string) error {
 	// Parse the address
@@ -45,6 +51,7 @@ func setTunAddress(name, address string) error {
 	// Store the IP and gateway for routing decisions
 	tunInterfaceIP = ip4
 	tunGatewayIP = gatewayIP
+	tunInterfaceName = name
 
 	// Use netsh to set the address with /24 mask
 	// First try without gateway (gateway often fails on TUN interfaces)
@@ -105,6 +112,9 @@ func getInterfaceIndex(name string) (int, error) {
 
 // setRoutes configures routes through the TUN interface (Windows)
 func setRoutes(name string, routes []net.IPNet) error {
+	// Clear any previously tracked routes
+	activeRoutes = nil
+
 	// Get the interface index
 	ifIndex, err := getInterfaceIndex(name)
 	if err != nil {
@@ -140,17 +150,22 @@ func setRoutes(name string, routes []net.IPNet) error {
 				// Try netsh as fallback
 				if err := addRouteNetsh(name, route, gatewayIP); err != nil {
 					log.Printf("Warning: failed to add route %s via netsh: %v", route.String(), err)
+					continue
 				}
 			}
-		} else {
-			log.Printf("Added route %s (gateway %s) via interface %d", route.String(), gateway, ifIndex)
 		}
+		// Track successfully added route
+		activeRoutes = append(activeRoutes, route)
+		log.Printf("Added route %s (gateway %s) via interface %d", route.String(), gateway, ifIndex)
 	}
 	return nil
 }
 
 // setRoutesNetsh uses netsh to set routes (fallback method)
 func setRoutesNetsh(name string, routes []net.IPNet) error {
+	// Clear any previously tracked routes
+	activeRoutes = nil
+
 	gatewayIP := ""
 	if tunGatewayIP != nil {
 		gatewayIP = tunGatewayIP.String()
@@ -159,6 +174,9 @@ func setRoutesNetsh(name string, routes []net.IPNet) error {
 	for _, route := range routes {
 		if err := addRouteNetsh(name, route, gatewayIP); err != nil {
 			log.Printf("Warning: failed to add route %s: %v", route.String(), err)
+		} else {
+			// Track successfully added route
+			activeRoutes = append(activeRoutes, route)
 		}
 	}
 	return nil
@@ -208,4 +226,58 @@ func ipMaskToStringWin(mask net.IPMask) string {
 		return fmt.Sprintf("%d.%d.%d.%d", mask[12], mask[13], mask[14], mask[15])
 	}
 	return "255.255.255.0" // Default
+}
+
+// cleanupRoutes removes all routes that were added by setRoutes
+func cleanupRoutes() {
+	if len(activeRoutes) == 0 {
+		log.Printf("No routes to clean up")
+		return
+	}
+
+	log.Printf("Cleaning up %d routes", len(activeRoutes))
+
+	for _, route := range activeRoutes {
+		mask := ipMaskToStringWin(route.Mask)
+
+		// Try route delete first
+		cmd := exec.Command("route", "delete", route.IP.String(), "mask", mask)
+		log.Printf("Executing: route delete %s mask %s", route.IP.String(), mask)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			outputStr := string(output)
+			if !strings.Contains(outputStr, "not found") && !strings.Contains(outputStr, "not exist") {
+				log.Printf("Warning: failed to delete route %s: %s", route.String(), outputStr)
+				// Try netsh as fallback
+				deleteRouteNetsh(route)
+			}
+		} else {
+			log.Printf("Deleted route %s", route.String())
+		}
+	}
+
+	// Clear the tracked routes
+	activeRoutes = nil
+	tunInterfaceIP = nil
+	tunGatewayIP = nil
+	tunInterfaceName = ""
+}
+
+// deleteRouteNetsh deletes a route using netsh
+func deleteRouteNetsh(route net.IPNet) {
+	ones, _ := route.Mask.Size()
+	prefix := fmt.Sprintf("%s/%d", route.IP.String(), ones)
+
+	cmd := exec.Command("netsh", "interface", "ipv4", "delete", "route",
+		prefix,
+		fmt.Sprintf("interface=%s", tunInterfaceName),
+		"store=active")
+
+	log.Printf("Executing netsh: %v", cmd.Args)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Warning: netsh delete route failed: %s", string(output))
+	} else {
+		log.Printf("Deleted route %s via netsh", prefix)
+	}
 }

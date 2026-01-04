@@ -306,6 +306,9 @@ func (u *UserspaceBackend) Close() error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
+	// Clean up routes before closing the interface
+	cleanupRoutes()
+
 	if u.wgDevice != nil {
 		u.wgDevice.Close()
 		u.wgDevice = nil
