@@ -549,7 +549,15 @@ function updateTrayMenu(isConnected = false) {
     { type: 'separator' },
     {
       label: 'Quit',
-      click: () => {
+      click: async () => {
+        // Disconnect VPN before quitting
+        try {
+          console.log('Disconnecting VPN before quit (from tray)...');
+          await axios.post(`${getApiBase()}/api/disconnect`, {}, { timeout: 5000 });
+          console.log('VPN disconnected successfully');
+        } catch (error) {
+          console.log('Disconnect on quit:', error.message);
+        }
         isQuitting = true;
         app.quit();
       },
