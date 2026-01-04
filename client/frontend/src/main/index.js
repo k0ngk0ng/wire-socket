@@ -176,6 +176,22 @@ function isMacOSServiceInstalled() {
   return fs.existsSync('/Library/LaunchDaemons/WireSocketClient.plist');
 }
 
+// Check if macOS plist has RunAtLoad set to true
+function isMacOSRunAtLoadEnabled() {
+  if (process.platform !== 'darwin') return true;
+  try {
+    const plistPath = '/Library/LaunchDaemons/WireSocketClient.plist';
+    if (!fs.existsSync(plistPath)) return false;
+    const content = fs.readFileSync(plistPath, 'utf-8');
+    // Check if RunAtLoad is followed by <true/>
+    return content.includes('<key>RunAtLoad</key>') &&
+           content.includes('<true/>') &&
+           content.indexOf('<key>RunAtLoad</key>') < content.indexOf('<true/>');
+  } catch {
+    return false;
+  }
+}
+
 // Check if macOS service is loaded (without sudo)
 function isMacOSServiceLoaded() {
   if (process.platform !== 'darwin') return false;
@@ -203,13 +219,22 @@ function installAndStartService() {
       // macOS: Build command based on current state
       const isInstalled = isMacOSServiceInstalled();
       const isLoaded = isMacOSServiceLoaded();
+      const hasRunAtLoad = isMacOSRunAtLoadEnabled();
 
-      if (!isInstalled) {
-        // Need to install and load
-        // Create config directory first
-        command = `mkdir -p /var/lib/wiresocket && "${backendPath}" -service install && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
+      if (!isInstalled || !hasRunAtLoad) {
+        // Need to install (or reinstall to update plist with RunAtLoad=true)
+        // Unload first if loaded, then uninstall, reinstall, and load
+        if (isLoaded) {
+          command = `launchctl unload /Library/LaunchDaemons/WireSocketClient.plist 2>/dev/null; `;
+        } else {
+          command = '';
+        }
+        if (isInstalled) {
+          command += `"${backendPath}" -service uninstall 2>/dev/null; `;
+        }
+        command += `mkdir -p /var/lib/wiresocket && "${backendPath}" -service install && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
       } else if (!isLoaded) {
-        // Already installed, just need to load
+        // Already installed with RunAtLoad, just need to load
         command = `mkdir -p /var/lib/wiresocket && launchctl load /Library/LaunchDaemons/WireSocketClient.plist`;
       } else {
         // Already loaded, try to kickstart
@@ -295,6 +320,13 @@ async function ensureServiceRunning() {
   // First check if already running (try multiple ports)
   if (await findServicePort()) {
     console.log(`Backend service is already running on port ${currentPort}`);
+
+    // On macOS, check if RunAtLoad is enabled - if not, need to reinstall
+    if (process.platform === 'darwin' && !isMacOSRunAtLoadEnabled()) {
+      console.log('Service plist missing RunAtLoad=true, will reinstall on next startup');
+      // Don't reinstall now since service is running, but log it
+      // The reinstall will happen next time service isn't running
+    }
 
     // Check if we need to restart for version update
     const runningVersion = await getBackendVersion();
