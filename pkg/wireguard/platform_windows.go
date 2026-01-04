@@ -58,6 +58,21 @@ func setTunAddress(name, address string) error {
 		return fmt.Errorf("failed to set address: %s: %w", string(output), err)
 	}
 
+	// Set MTU to 1420 to match WireGuard overhead
+	// This is critical for TCP MSS calculation - without it Windows uses loopback MTU (65535)
+	// which causes large packets to be dropped when traversing WireGuard over WebSocket
+	mtuCmd := exec.Command("netsh", "interface", "ipv4", "set", "subinterface",
+		fmt.Sprintf("interface=%s", name),
+		"mtu=1420",
+		"store=persistent")
+	log.Printf("Setting MTU: netsh interface ipv4 set subinterface interface=%s mtu=1420", name)
+	if output, err := mtuCmd.CombinedOutput(); err != nil {
+		// Log but don't fail - MTU setting might not be critical on all Windows versions
+		log.Printf("Warning: failed to set MTU: %s: %v", string(output), err)
+	} else {
+		log.Printf("MTU set to 1420 successfully")
+	}
+
 	log.Printf("TUN address set successfully")
 	return nil
 }
