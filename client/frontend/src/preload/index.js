@@ -21,4 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Password management
   changePassword: (data) => ipcRenderer.invoke('api:changePassword', data),
+
+  // App title/tooltip
+  updateTitle: (serverAddress) => ipcRenderer.invoke('app:updateTitle', serverAddress),
 });

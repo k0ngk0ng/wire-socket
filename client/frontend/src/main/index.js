@@ -78,6 +78,7 @@ async function findServicePort() {
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let connectedServer = null; // Store connected server address for title/tooltip
 
 // Get the path to the backend binary
 function getBackendPath() {
@@ -565,7 +566,39 @@ function showWindow() {
   }
 }
 
+// Update window title and tray tooltip based on connection status
+function updateAppTitle(serverAddress = null) {
+  connectedServer = serverAddress;
+
+  let title = 'WireSocket VPN';
+  let tooltip = 'WireSocket VPN';
+
+  if (serverAddress) {
+    // Remove protocol prefix for cleaner display
+    const displayServer = serverAddress.replace(/^https?:\/\//, '');
+    title = `WireSocket - ${displayServer}`;
+    tooltip = `WireSocket VPN - ${displayServer}`;
+  }
+
+  if (mainWindow) {
+    mainWindow.setTitle(title);
+  }
+
+  if (tray) {
+    tray.setToolTip(tooltip);
+  }
+}
+
 function updateTrayMenu(isConnected = false) {
+  // Build status label with server address if connected
+  let statusLabel = 'Status: Disconnected';
+  if (isConnected && connectedServer) {
+    const displayServer = connectedServer.replace(/^https?:\/\//, '');
+    statusLabel = `Connected: ${displayServer}`;
+  } else if (isConnected) {
+    statusLabel = 'Status: Connected';
+  }
+
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Show WireSocket',
@@ -575,7 +608,7 @@ function updateTrayMenu(isConnected = false) {
     },
     { type: 'separator' },
     {
-      label: isConnected ? 'Status: Connected' : 'Status: Disconnected',
+      label: statusLabel,
       enabled: false,
     },
     { type: 'separator' },
@@ -730,6 +763,12 @@ ipcMain.handle('api:updateRouteSettings', async (event, excludedRoutes) => {
 // Update tray menu when connection status changes
 ipcMain.handle('tray:updateStatus', async (event, isConnected) => {
   updateTrayMenu(isConnected);
+  return { success: true };
+});
+
+// Update app title and tray tooltip with server address
+ipcMain.handle('app:updateTitle', async (event, serverAddress) => {
+  updateAppTitle(serverAddress);
   return { success: true };
 });
 

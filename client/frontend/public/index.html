@@ -712,6 +712,11 @@
       if (window.electronAPI && window.electronAPI.updateTrayStatus) {
         window.electronAPI.updateTrayStatus(false);
       }
+
+      // Reset window title when disconnected
+      if (window.electronAPI && window.electronAPI.updateTitle) {
+        window.electronAPI.updateTitle(null);
+      }
     }
 
     function showConnectedView() {
@@ -729,7 +734,13 @@
 
       // Show server without protocol
       const savedServer = localStorage.getItem('wiresocket_server') || '-';
-      document.getElementById('connectedServer').textContent = savedServer.replace(/^https?:\/\//, '');
+      const displayServer = savedServer.replace(/^https?:\/\//, '');
+      document.getElementById('connectedServer').textContent = displayServer;
+
+      // Update window title and tray tooltip with server address
+      if (window.electronAPI && window.electronAPI.updateTitle) {
+        window.electronAPI.updateTitle(displayServer);
+      }
 
       document.getElementById('assignedIP').textContent = status.assigned_ip || '-';
 
