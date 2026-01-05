@@ -147,9 +147,9 @@ func (p *Program) Stop(s service.Service) error {
 func getDefaultConfigPath() string {
 	switch runtime.GOOS {
 	case "linux":
-		return "/etc/wiresocket/client.json"
+		return "/etc/wire-socket/client.json"
 	case "darwin":
-		return "/etc/wiresocket/client.json"
+		return "/etc/wire-socket/client.json"
 	default:
 		return filepath.Join(os.Getenv("ProgramData"), "WireSocket", "client.json")
 	}
@@ -297,9 +297,9 @@ func printCLIUsage() {
 	fmt.Println("  }")
 	fmt.Println()
 	fmt.Println("Systemd Service (CLI mode):")
-	fmt.Println("  1. Create config file: /etc/wiresocket/client.json")
+	fmt.Println("  1. Create config file: /etc/wire-socket/client.json")
 	fmt.Println("  2. Install service: wire-socket-client -service install")
-	fmt.Println("  3. Or use provided systemd unit: wiresocket-client.service")
+	fmt.Println("  3. Or use provided systemd unit: wire-socket-client.service")
 }
 
 func main() {

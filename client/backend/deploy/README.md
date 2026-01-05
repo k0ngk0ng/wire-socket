@@ -15,8 +15,8 @@ sudo chmod +x /usr/local/bin/wire-socket-client
 ### 2. Create Configuration
 
 ```bash
-sudo mkdir -p /etc/wiresocket
-sudo nano /etc/wiresocket/client.json
+sudo mkdir -p /etc/wire-socket
+sudo nano /etc/wire-socket/client.json
 ```
 
 Add your server credentials:
@@ -30,7 +30,7 @@ Add your server credentials:
 
 Secure the config file:
 ```bash
-sudo chmod 600 /etc/wiresocket/client.json
+sudo chmod 600 /etc/wire-socket/client.json
 ```
 
 ### 3. Test Connection
@@ -47,18 +47,18 @@ sudo wire-socket-client connect -server https://vpn.example.com -user myuser -pa
 
 ```bash
 # Copy service file
-sudo curl -L -o /etc/systemd/system/wiresocket-client.service \
-  https://raw.githubusercontent.com/k0ngk0ng/wire-socket/main/client/backend/deploy/wiresocket-client.service
+sudo curl -L -o /etc/systemd/system/wire-socket-client.service \
+  https://raw.githubusercontent.com/k0ngk0ng/wire-socket/main/client/backend/deploy/wire-socket-client.service
 
 # Reload systemd
 sudo systemctl daemon-reload
 
 # Enable and start
-sudo systemctl enable wiresocket-client
-sudo systemctl start wiresocket-client
+sudo systemctl enable wire-socket-client
+sudo systemctl start wire-socket-client
 
 # Check status
-sudo systemctl status wiresocket-client
+sudo systemctl status wire-socket-client
 ```
 
 ## CLI Usage
@@ -95,7 +95,7 @@ The `-daemon` flag enables:
 
 ### Check logs
 ```bash
-sudo journalctl -u wiresocket-client -f
+sudo journalctl -u wire-socket-client -f
 ```
 
 ### Verify network
@@ -109,16 +109,16 @@ ip route | grep wg0
 
 ### Manual disconnect
 ```bash
-sudo systemctl stop wiresocket-client
+sudo systemctl stop wire-socket-client
 ```
 
 ## Uninstall
 
 ```bash
-sudo systemctl stop wiresocket-client
-sudo systemctl disable wiresocket-client
-sudo rm /etc/systemd/system/wiresocket-client.service
+sudo systemctl stop wire-socket-client
+sudo systemctl disable wire-socket-client
+sudo rm /etc/systemd/system/wire-socket-client.service
 sudo rm /usr/local/bin/wire-socket-client
-sudo rm -rf /etc/wiresocket
+sudo rm -rf /etc/wire-socket
 sudo systemctl daemon-reload
 ```

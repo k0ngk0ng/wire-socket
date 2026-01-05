@@ -1,0 +1,23 @@
+[Unit]
+Description=WireSocket VPN Client
+Documentation=https://github.com/k0ngk0ng/wire-socket
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wire-socket-client connect -daemon
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=no
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/wire-socket /etc/wire-socket
+
+# Environment
+Environment=HOME=/root
+
+[Install]
+WantedBy=multi-user.target

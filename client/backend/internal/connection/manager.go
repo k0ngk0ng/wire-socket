@@ -482,9 +482,9 @@ func getConfigDir() (string, error) {
 	if os.Geteuid() == 0 {
 		switch runtime.GOOS {
 		case "darwin":
-			return "/var/lib/wiresocket", nil
+			return "/var/lib/wire-socket", nil
 		case "linux":
-			return "/var/lib/wiresocket", nil
+			return "/var/lib/wire-socket", nil
 		case "windows":
 			return filepath.Join(os.Getenv("ProgramData"), "WireSocket"), nil
 		}
@@ -494,7 +494,7 @@ func getConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		// Fallback to system directory
-		return "/var/lib/wiresocket", nil
+		return "/var/lib/wire-socket", nil
 	}
 
 	return filepath.Join(home, ".wire-socket"), nil

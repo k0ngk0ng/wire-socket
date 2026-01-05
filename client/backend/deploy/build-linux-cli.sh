@@ -30,7 +30,7 @@ GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
 
 # Copy deployment files
 echo "📦 Copying deployment files..."
-cp "$DEPLOY_DIR/wiresocket-client.service" "$DIST_DIR/"
+cp "$DEPLOY_DIR/wire-socket-client.service" "$DIST_DIR/"
 cp "$DEPLOY_DIR/client.json.example" "$DIST_DIR/"
 cp "$DEPLOY_DIR/README.md" "$DIST_DIR/"
 
@@ -56,31 +56,31 @@ echo "Installing WireSocket VPN Client..."
 sudo install -m 755 "$SCRIPT_DIR/$BINARY" /usr/local/bin/wire-socket-client
 
 # Create config directory
-sudo mkdir -p /etc/wiresocket
-if [ ! -f /etc/wiresocket/client.json ]; then
-    sudo cp "$SCRIPT_DIR/client.json.example" /etc/wiresocket/client.json
-    sudo chmod 600 /etc/wiresocket/client.json
-    echo "Created /etc/wiresocket/client.json - please edit with your credentials"
+sudo mkdir -p /etc/wire-socket
+if [ ! -f /etc/wire-socket/client.json ]; then
+    sudo cp "$SCRIPT_DIR/client.json.example" /etc/wire-socket/client.json
+    sudo chmod 600 /etc/wire-socket/client.json
+    echo "Created /etc/wire-socket/client.json - please edit with your credentials"
 fi
 
 # Install systemd service
-sudo cp "$SCRIPT_DIR/wiresocket-client.service" /etc/systemd/system/
+sudo cp "$SCRIPT_DIR/wire-socket-client.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 
 echo ""
 echo "Installation complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Edit config:   sudo nano /etc/wiresocket/client.json"
+echo "  1. Edit config:   sudo nano /etc/wire-socket/client.json"
 echo "  2. Test connect:  sudo wire-socket-client connect"
-echo "  3. Enable service: sudo systemctl enable --now wiresocket-client"
+echo "  3. Enable service: sudo systemctl enable --now wire-socket-client"
 INSTALL_EOF
 chmod +x "$DIST_DIR/install.sh"
 
 # Create tarball
 echo "📦 Creating tarball..."
 cd "$PROJECT_ROOT/dist"
-tar -czvf "wiresocket-client-linux-${VERSION}.tar.gz" -C linux-cli .
+tar -czvf "wire-socket-client-linux-${VERSION}.tar.gz" -C linux-cli .
 
 echo ""
 echo "✅ Build complete!"
@@ -88,4 +88,4 @@ echo ""
 echo "📋 Output files:"
 ls -lh "$DIST_DIR/"
 echo ""
-echo "📦 Tarball: $PROJECT_ROOT/dist/wiresocket-client-linux-${VERSION}.tar.gz"
+echo "📦 Tarball: $PROJECT_ROOT/dist/wire-socket-client-linux-${VERSION}.tar.gz"
