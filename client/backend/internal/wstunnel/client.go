@@ -19,6 +19,18 @@ const (
 
 	// DefaultTimeout is the default connection timeout
 	DefaultTimeout = 30 * time.Second
+
+	// PingInterval is the interval between WebSocket ping messages
+	PingInterval = 30 * time.Second
+
+	// PongTimeout is the timeout waiting for pong response
+	PongTimeout = 10 * time.Second
+
+	// ReconnectInterval is the base interval for reconnection attempts
+	ReconnectInterval = 5 * time.Second
+
+	// MaxReconnectInterval is the maximum interval for reconnection attempts
+	MaxReconnectInterval = 60 * time.Second
 )
 
 // Client handles UDP listening and forwards to WebSocket
@@ -32,6 +44,8 @@ type Client struct {
 	stopChan   chan struct{}
 	insecure   bool // Skip TLS verification
 	actualPort int  // Actual port after binding (useful when using port 0)
+	lastPong   time.Time
+	connMu     sync.RWMutex // Protects WebSocket connection for ping/pong
 }
 
 // Config holds client configuration
@@ -77,21 +91,12 @@ func (c *Client) Start() error {
 	c.actualPort = c.udpConn.LocalAddr().(*net.UDPAddr).Port
 
 	// Connect to WebSocket server
-	dialer := websocket.Dialer{
-		HandshakeTimeout: DefaultTimeout,
-	}
-
-	if c.insecure {
-		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-
-	c.conn, _, err = dialer.Dial(c.serverURL, nil)
-	if err != nil {
+	if err := c.connectWebSocket(); err != nil {
 		c.udpConn.Close()
 		c.mu.Lock()
 		c.running = false
 		c.mu.Unlock()
-		return fmt.Errorf("failed to connect to WebSocket server %s: %w", c.serverURL, err)
+		return err
 	}
 
 	log.Printf("Tunnel client started: UDP %s <-> WS %s", c.localAddr, c.serverURL)
@@ -103,8 +108,133 @@ func (c *Client) Start() error {
 	// Start forwarding goroutines
 	go c.udpToWS(clientMap, &clientMu)
 	go c.wsToUDP(clientMap, &clientMu)
+	go c.pingLoop()
 
 	return nil
+}
+
+// connectWebSocket establishes WebSocket connection
+func (c *Client) connectWebSocket() error {
+	dialer := websocket.Dialer{
+		HandshakeTimeout: DefaultTimeout,
+	}
+
+	if c.insecure {
+		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	conn, _, err := dialer.Dial(c.serverURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to connect to WebSocket server %s: %w", c.serverURL, err)
+	}
+
+	c.connMu.Lock()
+	c.conn = conn
+	c.lastPong = time.Now()
+	c.connMu.Unlock()
+
+	// Set pong handler
+	conn.SetPongHandler(func(appData string) error {
+		c.connMu.Lock()
+		c.lastPong = time.Now()
+		c.connMu.Unlock()
+		return nil
+	})
+
+	return nil
+}
+
+// reconnect attempts to reconnect with exponential backoff
+func (c *Client) reconnect() bool {
+	interval := ReconnectInterval
+
+	for {
+		select {
+		case <-c.stopChan:
+			return false
+		default:
+		}
+
+		log.Printf("Attempting to reconnect to %s...", c.serverURL)
+
+		if err := c.connectWebSocket(); err != nil {
+			log.Printf("Reconnection failed: %v, retrying in %v", err, interval)
+
+			select {
+			case <-c.stopChan:
+				return false
+			case <-time.After(interval):
+			}
+
+			// Exponential backoff
+			interval = interval * 2
+			if interval > MaxReconnectInterval {
+				interval = MaxReconnectInterval
+			}
+			continue
+		}
+
+		log.Printf("Reconnected to %s", c.serverURL)
+		return true
+	}
+}
+
+// pingLoop sends periodic ping messages to keep connection alive
+func (c *Client) pingLoop() {
+	ticker := time.NewTicker(PingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		case <-ticker.C:
+			c.connMu.RLock()
+			conn := c.conn
+			lastPong := c.lastPong
+			c.connMu.RUnlock()
+
+			if conn == nil {
+				continue
+			}
+
+			// Check if we received pong recently
+			if time.Since(lastPong) > PingInterval+PongTimeout {
+				log.Printf("No pong received for %v, connection may be dead", time.Since(lastPong))
+				c.connMu.Lock()
+				if c.conn != nil {
+					c.conn.Close()
+					c.conn = nil
+				}
+				c.connMu.Unlock()
+
+				// Try to reconnect
+				if !c.reconnect() {
+					return
+				}
+				continue
+			}
+
+			// Send ping
+			c.connMu.Lock()
+			if c.conn != nil {
+				err := c.conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(PongTimeout))
+				if err != nil {
+					log.Printf("Failed to send ping: %v", err)
+					c.conn.Close()
+					c.conn = nil
+					c.connMu.Unlock()
+
+					// Try to reconnect
+					if !c.reconnect() {
+						return
+					}
+					continue
+				}
+			}
+			c.connMu.Unlock()
+		}
+	}
 }
 
 // Stop stops the client
@@ -119,9 +249,13 @@ func (c *Client) Stop() error {
 	c.running = false
 	close(c.stopChan)
 
+	c.connMu.Lock()
 	if c.conn != nil {
 		c.conn.Close()
+		c.conn = nil
 	}
+	c.connMu.Unlock()
+
 	if c.udpConn != nil {
 		c.udpConn.Close()
 	}
@@ -173,10 +307,23 @@ func (c *Client) udpToWS(clientMap map[string]*net.UDPAddr, mu *sync.Mutex) {
 		clientMap["last"] = addr
 		mu.Unlock()
 
-		err = c.conn.WriteMessage(websocket.BinaryMessage, buf[:n])
+		// Get current connection with lock
+		c.connMu.RLock()
+		conn := c.conn
+		c.connMu.RUnlock()
+
+		if conn == nil {
+			// Connection not ready, wait for reconnect
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		err = conn.WriteMessage(websocket.BinaryMessage, buf[:n])
 		if err != nil {
 			log.Printf("WebSocket write error: %v", err)
-			return
+			// Don't return, pingLoop will handle reconnection
+			time.Sleep(100 * time.Millisecond)
+			continue
 		}
 	}
 }
@@ -190,7 +337,18 @@ func (c *Client) wsToUDP(clientMap map[string]*net.UDPAddr, mu *sync.Mutex) {
 		default:
 		}
 
-		_, data, err := c.conn.ReadMessage()
+		// Get current connection with lock
+		c.connMu.RLock()
+		conn := c.conn
+		c.connMu.RUnlock()
+
+		if conn == nil {
+			// Connection not ready, wait for reconnect
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		_, data, err := conn.ReadMessage()
 		if err != nil {
 			select {
 			case <-c.stopChan:
@@ -199,7 +357,9 @@ func (c *Client) wsToUDP(clientMap map[string]*net.UDPAddr, mu *sync.Mutex) {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					log.Printf("WebSocket read error: %v", err)
 				}
-				return
+				// Don't return, wait for reconnection
+				time.Sleep(100 * time.Millisecond)
+				continue
 			}
 		}
 
