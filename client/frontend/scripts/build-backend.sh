@@ -9,7 +9,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 CLIENT_BACKEND_DIR="$PROJECT_ROOT/client/backend"
 RESOURCES_DIR="$SCRIPT_DIR/../resources/bin"
 
-echo "🔨 Checking client backend builds..."
+# Get version from git or VERSION file
+VERSION=$("$PROJECT_ROOT/scripts/version.sh")
+LDFLAGS="-s -w -X main.Version=${VERSION}"
+
+echo "🔨 Building client backend v${VERSION}..."
+echo ""
 
 cd "$CLIENT_BACKEND_DIR"
 
@@ -35,7 +40,8 @@ SOURCE_MTIME=$(get_source_mtime)
 BIN_MTIME=$(get_bin_mtime "$RESOURCES_DIR/darwin/wire-socket-client")
 if [ "$SOURCE_MTIME" -gt "$BIN_MTIME" ] 2>/dev/null || [ ! -f "$RESOURCES_DIR/darwin/wire-socket-client" ]; then
     echo "🍎 Building for macOS AMD64..."
-    GOOS=darwin GOARCH=amd64 go build -o "$RESOURCES_DIR/darwin/wire-socket-client" cmd/client/main.go
+    mkdir -p "$RESOURCES_DIR/darwin"
+    GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$RESOURCES_DIR/darwin/wire-socket-client" ./cmd/client
     chmod +x "$RESOURCES_DIR/darwin/wire-socket-client"
 else
     echo "✓ macOS AMD64 build is up to date"
@@ -45,7 +51,8 @@ fi
 BIN_MTIME=$(get_bin_mtime "$RESOURCES_DIR/darwin/wire-socket-client-arm64")
 if [ "$SOURCE_MTIME" -gt "$BIN_MTIME" ] 2>/dev/null || [ ! -f "$RESOURCES_DIR/darwin/wire-socket-client-arm64" ]; then
     echo "🍎 Building for macOS ARM64..."
-    GOOS=darwin GOARCH=arm64 go build -o "$RESOURCES_DIR/darwin/wire-socket-client-arm64" cmd/client/main.go
+    mkdir -p "$RESOURCES_DIR/darwin"
+    GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$RESOURCES_DIR/darwin/wire-socket-client-arm64" ./cmd/client
     chmod +x "$RESOURCES_DIR/darwin/wire-socket-client-arm64"
 else
     echo "✓ macOS ARM64 build is up to date"
@@ -55,7 +62,8 @@ fi
 BIN_MTIME=$(get_bin_mtime "$RESOURCES_DIR/linux/wire-socket-client")
 if [ "$SOURCE_MTIME" -gt "$BIN_MTIME" ] 2>/dev/null || [ ! -f "$RESOURCES_DIR/linux/wire-socket-client" ]; then
     echo "🐧 Building for Linux AMD64..."
-    GOOS=linux GOARCH=amd64 go build -o "$RESOURCES_DIR/linux/wire-socket-client" cmd/client/main.go
+    mkdir -p "$RESOURCES_DIR/linux"
+    GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$RESOURCES_DIR/linux/wire-socket-client" ./cmd/client
     chmod +x "$RESOURCES_DIR/linux/wire-socket-client"
 else
     echo "✓ Linux AMD64 build is up to date"
@@ -65,14 +73,22 @@ fi
 BIN_MTIME=$(get_bin_mtime "$RESOURCES_DIR/win32/wire-socket-client.exe")
 if [ "$SOURCE_MTIME" -gt "$BIN_MTIME" ] 2>/dev/null || [ ! -f "$RESOURCES_DIR/win32/wire-socket-client.exe" ]; then
     echo "🪟 Building for Windows AMD64..."
-    GOOS=windows GOARCH=amd64 go build -o "$RESOURCES_DIR/win32/wire-socket-client.exe" cmd/client/main.go
+    mkdir -p "$RESOURCES_DIR/win32"
+    GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$RESOURCES_DIR/win32/wire-socket-client.exe" ./cmd/client
 else
     echo "✓ Windows AMD64 build is up to date"
 fi
 
-echo "✅ All builds ready!"
+# Update package.json version
+echo ""
+echo "📝 Updating package.json version to ${VERSION}..."
+cd "$SCRIPT_DIR/.."
+node -e "const pkg = require('./package.json'); pkg.version = '${VERSION}'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
+echo ""
+echo "✅ All builds ready! (v${VERSION})"
 echo ""
 echo "📋 Built files:"
-ls -lh "$RESOURCES_DIR/darwin/"
-ls -lh "$RESOURCES_DIR/linux/"
-ls -lh "$RESOURCES_DIR/win32/"
+ls -lh "$RESOURCES_DIR/darwin/" 2>/dev/null || true
+ls -lh "$RESOURCES_DIR/linux/" 2>/dev/null || true
+ls -lh "$RESOURCES_DIR/win32/" 2>/dev/null || true
