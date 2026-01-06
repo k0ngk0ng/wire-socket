@@ -20,6 +20,16 @@ const (
 
 	// DefaultTimeout is the default connection timeout
 	DefaultTimeout = 30 * time.Second
+
+	// PingInterval is the interval between ping messages
+	PingInterval = 30 * time.Second
+
+	// PongTimeout is the timeout for pong response
+	PongTimeout = 10 * time.Second
+
+	// ReadTimeout is the timeout for read operations
+	// Should be longer than PingInterval + PongTimeout to allow for ping/pong cycle
+	ReadTimeout = 60 * time.Second
 )
 
 // Server handles WebSocket connections and forwards data to UDP
@@ -151,6 +161,15 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	// Set up ping/pong handling
+	// When client sends ping, gorilla/websocket auto-responds with pong
+	// We need to update read deadline on pong to keep connection alive
+	conn.SetReadDeadline(time.Now().Add(ReadTimeout))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(ReadTimeout))
+		return nil
+	})
+
 	// Connect to UDP target
 	udpAddr, err := net.ResolveUDPAddr("udp", s.targetAddr)
 	if err != nil {
@@ -201,13 +220,21 @@ func (s *Server) wsToUDP(ctx context.Context, ws *websocket.Conn, udp *net.UDPCo
 		default:
 		}
 
+		// ReadMessage will also process ping frames and send pong responses
+		// The read deadline is extended by the pong handler when we receive data
 		_, data, err := ws.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			// Check if it's a timeout
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				log.Printf("WebSocket read timeout, closing connection")
+			} else if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("WebSocket read error: %v", err)
 			}
 			return
 		}
+
+		// Extend read deadline after successful read
+		ws.SetReadDeadline(time.Now().Add(ReadTimeout))
 
 		_, err = udp.Write(data)
 		if err != nil {

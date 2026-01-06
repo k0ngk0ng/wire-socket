@@ -26,6 +26,10 @@ const (
 	// PongTimeout is the timeout waiting for pong response
 	PongTimeout = 10 * time.Second
 
+	// ReadTimeout is the timeout for WebSocket read operations
+	// This ensures we don't block forever on dead connections
+	ReadTimeout = 45 * time.Second
+
 	// ReconnectInterval is the base interval for reconnection attempts
 	ReconnectInterval = 5 * time.Second
 
@@ -199,8 +203,9 @@ func (c *Client) pingLoop() {
 			}
 
 			// Check if we received pong recently
-			if time.Since(lastPong) > PingInterval+PongTimeout {
-				log.Printf("No pong received for %v, connection may be dead", time.Since(lastPong))
+			timeSinceLastPong := time.Since(lastPong)
+			if timeSinceLastPong > PingInterval+PongTimeout {
+				log.Printf("No pong received for %v, triggering reconnect", timeSinceLastPong)
 				c.connMu.Lock()
 				if c.conn != nil {
 					c.conn.Close()
@@ -215,12 +220,15 @@ func (c *Client) pingLoop() {
 				continue
 			}
 
-			// Send ping
+			// Send ping with write deadline
 			c.connMu.Lock()
 			if c.conn != nil {
-				err := c.conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(PongTimeout))
+				deadline := time.Now().Add(PongTimeout)
+				c.conn.SetWriteDeadline(deadline)
+				err := c.conn.WriteControl(websocket.PingMessage, []byte{}, deadline)
+				c.conn.SetWriteDeadline(time.Time{}) // Clear deadline
 				if err != nil {
-					log.Printf("Failed to send ping: %v", err)
+					log.Printf("Failed to send ping: %v, triggering reconnect", err)
 					c.conn.Close()
 					c.conn = nil
 					c.connMu.Unlock()
@@ -348,12 +356,20 @@ func (c *Client) wsToUDP(clientMap map[string]*net.UDPAddr, mu *sync.Mutex) {
 			continue
 		}
 
+		// Set read deadline to prevent blocking forever on dead connections
+		conn.SetReadDeadline(time.Now().Add(ReadTimeout))
+
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			select {
 			case <-c.stopChan:
 				return
 			default:
+				// Check if it's a timeout (expected) or real error
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					// Timeout is normal, just continue and let pingLoop handle dead connections
+					continue
+				}
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					log.Printf("WebSocket read error: %v", err)
 				}
