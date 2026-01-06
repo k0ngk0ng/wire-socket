@@ -132,6 +132,8 @@ temp/
 !server/deploy/systemd/*.service
 # Except Android resource files
 !mobile/android/**/*.xml
+# Except iOS plist files
+!mobile/ios/**/*.plist
 
 # Certificates and keys (security)
 *.pem
