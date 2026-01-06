@@ -13,8 +13,9 @@ import (
 	"syscall"
 	"time"
 	"wire-socket-client/internal/api"
-	"wire-socket-client/internal/connection"
+	"wire-socket-client/internal/sdkadapter"
 
+	sdk "github.com/k0ngk0ng/wire-socket/sdk"
 	"github.com/kardianos/service"
 )
 
@@ -39,7 +40,7 @@ type CLIConfig struct {
 // Program implements the service.Interface
 type Program struct {
 	apiServer *api.Server
-	connMgr   *connection.Manager
+	connMgr   *sdkadapter.Manager
 }
 
 func (p *Program) Start(s service.Service) error {
@@ -59,7 +60,7 @@ func getPortFilePath() string {
 	case "windows":
 		// Use ProgramData which is accessible to both SYSTEM and user accounts
 		dir = os.Getenv("ProgramData")
-		if dir == ""  {
+		if dir == "" {
 			dir = "C:\\ProgramData"
 		}
 		dir = filepath.Join(dir, "WireSocket")
@@ -92,9 +93,9 @@ func writePortFile(port int) error {
 }
 
 func (p *Program) run() {
-	// Initialize connection manager
+	// Initialize SDK-backed connection manager
 	var err error
-	p.connMgr, err = connection.NewManager()
+	p.connMgr, err = sdkadapter.NewManager()
 	if err != nil {
 		logger.Errorf("Failed to create connection manager: %v", err)
 		return
@@ -170,26 +171,49 @@ func loadCLIConfig(path string) (*CLIConfig, error) {
 	return &config, nil
 }
 
-// runCLIConnect runs the VPN connection in CLI mode (foreground)
+// runCLIConnect runs the VPN connection in CLI mode using SDK
 func runCLIConnect(server, username, password string, daemon bool) error {
 	log.Printf("WireSocket CLI Client v%s", Version)
 	log.Printf("Connecting to %s as %s...", server, username)
 
-	// Initialize connection manager
-	connMgr, err := connection.NewManager()
-	if err != nil {
-		return fmt.Errorf("failed to create connection manager: %w", err)
-	}
-	defer connMgr.Close()
-
-	// Connect
-	err = connMgr.Connect(connection.ConnectRequest{
-		ServerAddress: server,
-		TunnelURL:     server,
-		Username:      username,
-		Password:      password,
+	// Create SDK client directly for CLI mode
+	client, err := sdk.New(sdk.Options{
+		StatsInterval: 60 * time.Second,
+		Debug:         false,
 	})
 	if err != nil {
+		return fmt.Errorf("failed to create SDK client: %w", err)
+	}
+	defer client.Close()
+
+	// Register event handler
+	client.OnEvent(func(event sdk.Event) {
+		switch event.Type {
+		case sdk.EventConnecting:
+			log.Println("Connecting...")
+		case sdk.EventConnected:
+			log.Printf("Connected! IP: %s", event.Status.AssignedIP)
+		case sdk.EventDisconnected:
+			log.Println("Disconnected")
+		case sdk.EventReconnecting:
+			log.Println("Connection lost, reconnecting...")
+		case sdk.EventError:
+			log.Printf("Error: %v", event.Error)
+		case sdk.EventStatsUpdated:
+			if event.Stats != nil && client.IsConnected() {
+				log.Printf("Stats: RX=%d bytes, TX=%d bytes", event.Stats.RxBytes, event.Stats.TxBytes)
+			}
+		}
+	})
+
+	// Connect
+	config := sdk.DefaultConnectConfig()
+	config.Server = server
+	config.Username = username
+	config.Password = password
+	config.AutoReconnect = daemon
+
+	if err := client.Connect(config); err != nil {
 		return fmt.Errorf("failed to initiate connection: %w", err)
 	}
 
@@ -201,18 +225,15 @@ func runCLIConnect(server, username, password string, daemon bool) error {
 	for {
 		select {
 		case <-timeout:
-			connMgr.Disconnect()
+			client.Disconnect()
 			return fmt.Errorf("connection timed out")
 		case <-ticker.C:
-			status := connMgr.GetStatus()
-			switch status.State {
-			case connection.StateConnected:
-				log.Printf("Connected! Assigned IP: %s", status.AssignedIP)
+			state := client.GetState()
+			switch state {
+			case sdk.StateConnected:
 				goto connected
-			case connection.StateFailed:
-				return fmt.Errorf("connection failed: %s", status.Error)
-			case connection.StateConnecting:
-				// Still connecting, continue waiting
+			case sdk.StateFailed:
+				return fmt.Errorf("connection failed: %s", client.GetStatus().Error)
 			}
 		}
 	}
@@ -228,42 +249,12 @@ connected:
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Status ticker for daemon mode
-	statusTicker := time.NewTicker(60 * time.Second)
-	defer statusTicker.Stop()
-
-	for {
-		select {
-		case sig := <-sigChan:
-			log.Printf("Received signal %v, disconnecting...", sig)
-			connMgr.Disconnect()
-			log.Println("Disconnected. Goodbye!")
-			return nil
-		case <-statusTicker.C:
-			status := connMgr.GetStatus()
-			if status.State != connection.StateConnected {
-				log.Printf("Connection lost (state: %s)", status.State)
-				if daemon {
-					// In daemon mode, try to reconnect
-					log.Println("Attempting to reconnect...")
-					err = connMgr.Connect(connection.ConnectRequest{
-						ServerAddress: server,
-						TunnelURL:     server,
-						Username:      username,
-						Password:      password,
-					})
-					if err != nil {
-						log.Printf("Reconnection failed: %v", err)
-					}
-				} else {
-					return fmt.Errorf("connection lost")
-				}
-			} else {
-				log.Printf("Status: Connected | IP: %s | RX: %d bytes | TX: %d bytes",
-					status.AssignedIP, status.RxBytes, status.TxBytes)
-			}
-		}
-	}
+	// Wait for signal
+	sig := <-sigChan
+	log.Printf("Received signal %v, disconnecting...", sig)
+	client.Disconnect()
+	log.Println("Disconnected. Goodbye!")
+	return nil
 }
 
 // printCLIUsage prints CLI usage information

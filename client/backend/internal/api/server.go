@@ -4,20 +4,20 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"wire-socket-client/internal/connection"
+	"wire-socket-client/internal/sdkadapter"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Server is the local HTTP API server
 type Server struct {
-	connMgr    *connection.Manager
+	connMgr    *sdkadapter.Manager
 	httpServer *http.Server
 	engine     *gin.Engine
 }
 
 // NewServer creates a new API server
-func NewServer(connMgr *connection.Manager, addr string) *Server {
+func NewServer(connMgr *sdkadapter.Manager, addr string) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.Default()
 
@@ -95,7 +95,7 @@ func (s *Server) healthCheck(c *gin.Context) {
 }
 
 func (s *Server) connect(c *gin.Context) {
-	var req connection.ConnectRequest
+	var req sdkadapter.ConnectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
@@ -170,7 +170,7 @@ func (s *Server) updateRouteSettings(c *gin.Context) {
 }
 
 func (s *Server) changePassword(c *gin.Context) {
-	var req connection.ChangePasswordRequest
+	var req sdkadapter.ChangePasswordRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
