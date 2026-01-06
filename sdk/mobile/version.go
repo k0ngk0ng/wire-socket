@@ -1,7 +1,8 @@
 package mobile
 
-// Version is the SDK version
-const Version = "0.8.0"
+// Version is the SDK version, can be overridden at build time with:
+//   -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=x.y.z"
+var Version = "dev"
 
 // GetVersion returns the SDK version string.
 func GetVersion() string {

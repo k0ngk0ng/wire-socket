@@ -11,7 +11,10 @@ SDK_DIR="$PROJECT_ROOT/sdk"
 ANDROID_DIR="$SCRIPT_DIR"
 LIBS_DIR="$ANDROID_DIR/app/libs"
 
-echo "🔨 Building WireSocket Android App"
+# Get version from git or VERSION file
+VERSION=$("$PROJECT_ROOT/scripts/version.sh")
+
+echo "🔨 Building WireSocket Android App v${VERSION}"
 echo ""
 
 # Check for gomobile
@@ -25,8 +28,8 @@ fi
 echo "🔧 Initializing gomobile..."
 gomobile init
 
-# Build the mobile SDK
-echo "📱 Building mobile SDK (.aar)..."
+# Build the mobile SDK with version
+echo "📱 Building mobile SDK (.aar) v${VERSION}..."
 mkdir -p "$LIBS_DIR"
 
 cd "$SDK_DIR"
@@ -34,10 +37,16 @@ gomobile bind -v \
     -target=android \
     -androidapi=24 \
     -javapkg=com.wiresocket \
+    -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=${VERSION}" \
     -o "$LIBS_DIR/mobile.aar" \
     ./mobile
 
 echo "✅ SDK built: $LIBS_DIR/mobile.aar"
+
+# Update Android versionName in build.gradle.kts
+echo "📝 Updating Android versionName to ${VERSION}..."
+sed -i.bak "s/versionName = \".*\"/versionName = \"${VERSION}\"/" "$ANDROID_DIR/app/build.gradle.kts"
+rm -f "$ANDROID_DIR/app/build.gradle.kts.bak"
 
 # Build the Android app
 echo ""
@@ -54,4 +63,5 @@ fi
 echo ""
 echo "✅ Build complete!"
 echo ""
+echo "📱 Version: ${VERSION}"
 echo "📱 APK location: $ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
