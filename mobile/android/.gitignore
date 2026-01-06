@@ -1,0 +1,20 @@
+# Android build artifacts
+*.apk
+*.aab
+*.dex
+*.class
+*.jar
+!app/libs/*.aar
+
+# Gradle
+.gradle/
+build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Generated
+app/libs/mobile.aar

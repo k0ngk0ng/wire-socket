@@ -130,6 +130,8 @@ temp/
 
 # Except deploy templates
 !server/deploy/systemd/*.service
+# Except Android resource files
+!mobile/android/**/*.xml
 
 # Certificates and keys (security)
 *.pem
