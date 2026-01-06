@@ -1,7 +1,7 @@
 package mobile
 
 // Version is the SDK version
-const Version = "0.7.2"
+const Version = "0.8.0"
 
 // GetVersion returns the SDK version string.
 func GetVersion() string {
