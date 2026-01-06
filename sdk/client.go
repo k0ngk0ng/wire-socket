@@ -2,11 +2,9 @@ package sdk
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 // Client is the main SDK client for WireSocket VPN
@@ -760,8 +756,8 @@ func buildWebSocketURL(tunnelURL, serverAddress string) (string, error) {
 	return parsed.String(), nil
 }
 
-// ======== Placeholder interfaces ========
-// These will be implemented using the existing wireguard/wstunnel packages
+// ======== Internal types ========
+// These are implemented in wireguard.go and tunnel.go
 
 type wgConfig struct {
 	PrivateKey    string
@@ -784,197 +780,4 @@ type wgBackend interface {
 	GetStats() (wgStats, error)
 	UpdateAllowedIPs(peerPublicKey string, allowedIPs []string) error
 	Close() error
-}
-
-type tunnelClient struct {
-	serverURL string
-	insecure  bool
-	conn      *websocket.Conn
-	udpConn   *net.UDPConn
-	running   bool
-	stopChan  chan struct{}
-	port      int
-	mu        sync.Mutex
-	connMu    sync.RWMutex
-	lastPong  time.Time
-}
-
-func newTunnelClient(serverURL string, insecure bool) *tunnelClient {
-	return &tunnelClient{
-		serverURL: serverURL,
-		insecure:  insecure,
-		stopChan:  make(chan struct{}),
-	}
-}
-
-func (t *tunnelClient) Start() error {
-	// Implementation will be similar to internal/wstunnel/client.go
-	udpAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:0")
-	var err error
-	t.udpConn, err = net.ListenUDP("udp", udpAddr)
-	if err != nil {
-		return err
-	}
-	t.port = t.udpConn.LocalAddr().(*net.UDPAddr).Port
-
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 30 * time.Second,
-	}
-	if t.insecure {
-		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-
-	t.conn, _, err = dialer.Dial(t.serverURL, nil)
-	if err != nil {
-		t.udpConn.Close()
-		return err
-	}
-
-	t.mu.Lock()
-	t.running = true
-	t.lastPong = time.Now()
-	t.mu.Unlock()
-
-	// Set pong handler
-	t.conn.SetPongHandler(func(string) error {
-		t.connMu.Lock()
-		t.lastPong = time.Now()
-		t.connMu.Unlock()
-		return nil
-	})
-
-	go t.forwardUDPToWS()
-	go t.forwardWSToUDP()
-	go t.pingLoop()
-
-	return nil
-}
-
-func (t *tunnelClient) Stop() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if !t.running {
-		return
-	}
-
-	t.running = false
-	close(t.stopChan)
-
-	t.connMu.Lock()
-	if t.conn != nil {
-		t.conn.Close()
-	}
-	t.connMu.Unlock()
-
-	if t.udpConn != nil {
-		t.udpConn.Close()
-	}
-}
-
-func (t *tunnelClient) IsRunning() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.running
-}
-
-func (t *tunnelClient) LocalPort() int {
-	return t.port
-}
-
-func (t *tunnelClient) forwardUDPToWS() {
-	buf := make([]byte, 65535)
-	var lastAddr *net.UDPAddr
-
-	for {
-		select {
-		case <-t.stopChan:
-			return
-		default:
-		}
-
-		t.udpConn.SetReadDeadline(time.Now().Add(time.Second))
-		n, addr, err := t.udpConn.ReadFromUDP(buf)
-		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				continue
-			}
-			select {
-			case <-t.stopChan:
-				return
-			default:
-				continue
-			}
-		}
-
-		lastAddr = addr
-		_ = lastAddr // Store for responses
-
-		t.connMu.RLock()
-		conn := t.conn
-		t.connMu.RUnlock()
-
-		if conn != nil {
-			conn.WriteMessage(websocket.BinaryMessage, buf[:n])
-		}
-	}
-}
-
-func (t *tunnelClient) forwardWSToUDP() {
-	for {
-		select {
-		case <-t.stopChan:
-			return
-		default:
-		}
-
-		t.connMu.RLock()
-		conn := t.conn
-		t.connMu.RUnlock()
-
-		if conn == nil {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-
-		_, data, err := conn.ReadMessage()
-		if err != nil {
-			select {
-			case <-t.stopChan:
-				return
-			default:
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-		}
-
-		// Send to WireGuard (it will be the only UDP client)
-		// This is a simplified version
-		_ = data
-	}
-}
-
-func (t *tunnelClient) pingLoop() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-t.stopChan:
-			return
-		case <-ticker.C:
-			t.connMu.Lock()
-			if t.conn != nil {
-				t.conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second))
-			}
-			t.connMu.Unlock()
-		}
-	}
-}
-
-// Note: newWGBackend will need to be implemented using the actual wireguard package
-func newWGBackend(name string) (wgBackend, error) {
-	// This is a placeholder - actual implementation will use
-	// the existing wireguard package from client/backend/internal/wireguard
-	return nil, fmt.Errorf("WireGuard backend not yet integrated - use sdk/wg_linux.go or sdk/wg_darwin.go")
 }
