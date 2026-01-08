@@ -236,11 +236,46 @@ All SDK methods are thread-safe and can be called from any goroutine.
 
 ### Platform Support
 
+**Desktop:**
 - Linux (amd64, arm64)
 - macOS (amd64, arm64)
 - Windows (amd64)
 
-Note: The SDK requires root/administrator privileges to create WireGuard interfaces.
+**Mobile (via gomobile):**
+- iOS (arm64, simulator)
+- Android (arm64, arm, x86_64, x86)
+
+Note: Desktop SDK requires root/administrator privileges to create WireGuard interfaces. Mobile SDK uses platform-provided TUN file descriptors.
+
+## Mobile SDK
+
+The `sdk/mobile` package provides gomobile-compatible bindings:
+
+```bash
+# Build for Android
+gomobile bind -target=android -javapkg=com.wiresocket -o mobile.aar ./mobile
+
+# Build for iOS
+gomobile bind -target=ios -o Mobile.xcframework ./mobile
+```
+
+### Mobile API
+
+```go
+// Create tunnel
+tunnel := mobile.NewTunnel()
+
+// Start with platform TUN file descriptor
+err := tunnel.StartWithFD(fd, configJSON)
+
+// Get stats
+statsJSON := tunnel.GetStats()
+
+// Stop tunnel
+tunnel.Stop()
+```
+
+See [client/mobile/android](../client/mobile/android) and [client/mobile/ios](../client/mobile/ios) for example implementations.
 
 ## License
 

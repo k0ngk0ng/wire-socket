@@ -45,8 +45,8 @@ This will:
 
 1. Build the Go SDK:
 ```bash
-cd ../../sdk
-gomobile bind -target=android -androidapi=24 -javapkg=com.wiresocket -o ../mobile/android/app/libs/mobile.aar ./mobile
+cd ../../../sdk
+gomobile bind -target=android -androidapi=24 -javapkg=com.wiresocket -o ../client/mobile/android/app/libs/mobile.aar ./mobile
 ```
 
 2. Open the project in Android Studio and build.
@@ -88,11 +88,14 @@ gomobile bind -target=android -androidapi=24 -javapkg=com.wiresocket -o ../mobil
 
 ## Current Limitations
 
-The SDK currently uses userspace WireGuard (netstack), which operates in memory without creating a real TUN interface. For full VPN functionality:
+~~The SDK currently uses userspace WireGuard (netstack), which operates in memory without creating a real TUN interface.~~
 
-1. **Planned**: Modify SDK to expose WireGuard config
-2. **Planned**: Create TUN interface via `VpnService.Builder`
-3. **Planned**: Route packets between TUN and SDK tunnel
+**Update (v0.8.x):** The SDK now supports platform-provided TUN file descriptors via `Tunnel.startWithFD()`. The Android app:
+
+1. Creates a TUN interface using `VpnService.Builder`
+2. Authenticates with the server to get WireGuard configuration
+3. Passes the TUN file descriptor to the SDK's `Tunnel` class
+4. Routes all traffic through the VPN
 
 ## Permissions
 

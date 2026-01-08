@@ -4,11 +4,12 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 
 ## Features
 
-- **Cross-Platform**: macOS, Windows, Linux
+- **Cross-Platform**: macOS, Windows, Linux, iOS, Android
 - **Zero Dependencies**: Pure Go userspace WireGuard - no kernel modules or external tools required
 - **Secure**: WireGuard encryption with WebSocket tunneling
 - **All-in-One**: Client bundles all dependencies
 - **Modern UI**: Electron desktop app with system tray
+- **Mobile Apps**: Native iOS and Android apps using Go SDK
 - **Auto Service Install**: Automatically installs and starts backend service with privilege escalation
 - **Admin Tools**: Web UI and `wsctl` CLI for managing users, routes, and NAT rules
 - **MTU Handling**: TCPMSS clamping support for multi-link tunnels
@@ -96,6 +97,14 @@ See [docs/](docs/) for full documentation:
 - [DEPLOY.md](docs/DEPLOY.md) - Server deployment (systemd, Docker)
 - [DOCKER.md](docs/DOCKER.md) - Docker deployment
 - [PACKAGING.md](docs/PACKAGING.md) - Client packaging
+
+### Component Documentation
+
+- [SDK](sdk/README.md) - Go SDK for building custom clients
+- [Server](server/README.md) - VPN server with WireGuard
+- [Desktop Client](client/README.md) - Electron desktop app
+- [Android App](client/mobile/android/README.md) - Android VPN client
+- [iOS App](client/mobile/ios/README.md) - iOS VPN client
 
 ## Security
 

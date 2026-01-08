@@ -43,8 +43,8 @@ This will:
 
 1. Build the Go SDK:
 ```bash
-cd ../../sdk
-gomobile bind -target=ios -o ../mobile/ios/WireSocket/Frameworks/Mobile.xcframework ./mobile
+cd ../../../sdk
+gomobile bind -target=ios -o ../client/mobile/ios/WireSocket/Frameworks/Mobile.xcframework ./mobile
 ```
 
 2. Open in Xcode:
@@ -82,13 +82,32 @@ open WireSocket/WireSocket.xcodeproj
 - Status card showing connection state and stats
 - Connect/Disconnect button
 
-## Current Limitations
+## Current Status
 
-The app currently uses the SDK's userspace WireGuard implementation. For full iOS VPN functionality with system-wide traffic routing, a Network Extension would be needed:
+**Update (v0.8.x):** The iOS app now includes a Network Extension (PacketTunnelProvider) for full system-wide VPN functionality:
 
-1. **Planned**: Add Packet Tunnel Provider extension
-2. **Planned**: Integrate with NEVPNManager
-3. **Planned**: Handle extension-app communication
+1. Main app uses `NETunnelProviderManager` to configure and control VPN
+2. PacketTunnel extension handles actual VPN traffic
+3. SDK's `Tunnel` class accepts TUN file descriptor from the extension
+4. All traffic is routed through WireGuard tunnel
+
+### Architecture with Network Extension
+
+```
+┌─────────────────────────────────────┐
+│           SwiftUI Views             │
+│    (ContentView, StatusCard)        │
+├─────────────────────────────────────┤
+│           VPNManager                │
+│   (NETunnelProviderManager)         │
+├─────────────────────────────────────┤
+│      PacketTunnelProvider           │
+│   (NEPacketTunnelProvider)          │
+├─────────────────────────────────────┤
+│      Mobile.xcframework             │
+│   (Go SDK via gomobile bind)        │
+└─────────────────────────────────────┘
+```
 
 ## Development Notes
 
