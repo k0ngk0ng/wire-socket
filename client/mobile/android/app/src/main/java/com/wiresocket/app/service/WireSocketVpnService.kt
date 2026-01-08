@@ -13,7 +13,7 @@ import com.wiresocket.app.data.ConnectionState
 import com.wiresocket.app.data.VpnStateHolder
 import com.wiresocket.app.data.VpnStatus
 import com.wiresocket.app.ui.MainActivity
-import mobile.Mobile
+import com.wiresocket.mobile.Mobile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
