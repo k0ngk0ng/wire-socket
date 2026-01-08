@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 SDK_DIR="$PROJECT_ROOT/sdk"
 IOS_DIR="$SCRIPT_DIR"
 FRAMEWORKS_DIR="$IOS_DIR/WireSocket/Frameworks"

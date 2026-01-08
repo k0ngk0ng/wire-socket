@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 SDK_DIR="$PROJECT_ROOT/sdk"
 ANDROID_DIR="$SCRIPT_DIR"
 LIBS_DIR="$ANDROID_DIR/app/libs"
