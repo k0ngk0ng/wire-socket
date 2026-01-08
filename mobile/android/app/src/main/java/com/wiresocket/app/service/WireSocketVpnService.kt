@@ -14,11 +14,16 @@ import com.wiresocket.app.data.VpnStateHolder
 import com.wiresocket.app.data.VpnStatus
 import com.wiresocket.app.ui.MainActivity
 import mobile.Mobile
-import mobile.EventHandler
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
-class WireSocketVpnService : VpnService(), EventHandler {
+class WireSocketVpnService : VpnService() {
 
     companion object {
         private const val TAG = "WireSocketVpnService"
@@ -29,11 +34,14 @@ class WireSocketVpnService : VpnService(), EventHandler {
         const val EXTRA_SERVER = "server"
         const val EXTRA_USERNAME = "username"
         const val EXTRA_PASSWORD = "password"
+
+        private const val MTU = 1420
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var sdkClient: Mobile.Client? = null
+    private var tunnel: Mobile.Tunnel? = null
     private val isRunning = AtomicBoolean(false)
+    private var currentServer: String = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -69,25 +77,57 @@ class WireSocketVpnService : VpnService(), EventHandler {
             return
         }
 
+        currentServer = server
         VpnStateHolder.updateState(ConnectionState.CONNECTING)
         startForegroundNotification("Connecting...")
 
         Thread {
             try {
-                // Initialize SDK client
-                sdkClient = Mobile.newClient().also { client ->
-                    client.setEventHandler(this)
+                // Step 1: Authenticate and get WireGuard config
+                Log.d(TAG, "Authenticating with server: $server")
+                val config = authenticate(server, username, password)
+                Log.d(TAG, "Got WireGuard config, address: ${config.address}")
+
+                // Step 2: Create VPN interface using VpnService.Builder
+                val vpnFd = createVpnInterface(config)
+                if (vpnFd == null) {
+                    throw Exception("Failed to create VPN interface")
+                }
+                vpnInterface = vpnFd
+                Log.d(TAG, "VPN interface created, fd: ${vpnFd.fd}")
+
+                // Step 3: Start WireGuard tunnel with the file descriptor
+                val tunnelConfig = JSONObject().apply {
+                    put("privateKey", config.privateKey)
+                    put("address", config.address)
+                    put("dns", config.dns)
+                    put("peerPublicKey", config.peerPublicKey)
+                    put("peerEndpoint", config.peerEndpoint)
+                    put("allowedIPs", JSONArray(config.allowedIPs))
+                    put("mtu", MTU)
                 }
 
-                // Connect via SDK (handles auth, tunnel, WireGuard config)
-                sdkClient?.connect(server, username, password, true)
+                tunnel = Mobile.newTunnel()
+                tunnel?.startWithFD(vpnFd.fd.toLong(), tunnelConfig.toString())
+                Log.d(TAG, "WireGuard tunnel started")
+
+                // Step 4: Update UI state
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    VpnStateHolder.updateStatus(VpnStatus(
+                        state = ConnectionState.CONNECTED,
+                        server = server,
+                        assignedIp = config.address,
+                        connectedAtUnix = System.currentTimeMillis() / 1000
+                    ))
+                    updateNotification("Connected: ${config.address}")
+                }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Connection failed", e)
-                VpnStateHolder.setError(e.message ?: "Connection failed")
-                isRunning.set(false)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    VpnStateHolder.setError(e.message ?: "Connection failed")
+                }
+                cleanup()
             }
         }.start()
     }
@@ -95,93 +135,183 @@ class WireSocketVpnService : VpnService(), EventHandler {
     private fun disconnect() {
         Log.d(TAG, "Disconnecting...")
         VpnStateHolder.updateState(ConnectionState.DISCONNECTING)
+        cleanup()
+        VpnStateHolder.updateState(ConnectionState.DISCONNECTED)
+    }
 
+    private fun cleanup() {
         try {
-            sdkClient?.disconnect()
-            sdkClient?.close()
-            sdkClient = null
+            tunnel?.stop()
+            tunnel = null
         } catch (e: Exception) {
-            Log.e(TAG, "Error disconnecting SDK", e)
+            Log.e(TAG, "Error stopping tunnel", e)
         }
 
-        vpnInterface?.close()
-        vpnInterface = null
+        try {
+            vpnInterface?.close()
+            vpnInterface = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing VPN interface", e)
+        }
 
         isRunning.set(false)
-        VpnStateHolder.updateState(ConnectionState.DISCONNECTED)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    // EventHandler implementation - called by Go SDK
-    override fun onEvent(eventType: String, jsonData: String) {
-        Log.d(TAG, "SDK Event: $eventType")
+    private fun createVpnInterface(config: WireGuardConfig): ParcelFileDescriptor? {
+        val builder = Builder()
+            .setSession("WireSocket")
+            .setMtu(MTU)
 
-        try {
-            val json = JSONObject(jsonData)
+        // Set the VPN address
+        val addressParts = config.address.split("/")
+        val address = addressParts[0]
+        val prefixLength = if (addressParts.size > 1) addressParts[1].toInt() else 32
+        builder.addAddress(address, prefixLength)
 
-            when (eventType) {
-                "connecting" -> {
-                    VpnStateHolder.updateState(ConnectionState.CONNECTING)
-                    updateNotification("Connecting...")
-                }
-                "connected" -> {
-                    val status = json.optJSONObject("status")
-                    val assignedIp = status?.optString("assignedIP") ?: ""
-                    val server = status?.optString("server") ?: ""
-
-                    // Setup VPN interface after SDK connects
-                    setupVpnInterface(assignedIp)
-
-                    VpnStateHolder.updateStatus(VpnStatus(
-                        state = ConnectionState.CONNECTED,
-                        server = server,
-                        assignedIp = assignedIp,
-                        connectedAtUnix = status?.optLong("connectedAtUnix") ?: 0
-                    ))
-                    updateNotification("Connected: $assignedIp")
-                }
-                "disconnected" -> {
-                    VpnStateHolder.updateState(ConnectionState.DISCONNECTED)
-                    disconnect()
-                }
-                "reconnecting" -> {
-                    VpnStateHolder.updateState(ConnectionState.RECONNECTING)
-                    updateNotification("Reconnecting...")
-                }
-                "error" -> {
-                    val error = json.optString("error", "Unknown error")
-                    VpnStateHolder.setError(error)
-                    disconnect()
-                }
-                "stats_updated" -> {
-                    val stats = json.optJSONObject("stats")
-                    if (stats != null) {
-                        VpnStateHolder.updateStats(
-                            rxBytes = stats.optLong("rxBytes"),
-                            txBytes = stats.optLong("txBytes"),
-                            rxSpeed = stats.optLong("rxSpeed"),
-                            txSpeed = stats.optLong("txSpeed")
-                        )
+        // Add DNS servers
+        if (config.dns.isNotEmpty()) {
+            config.dns.split(",").forEach { dns ->
+                val dnsIp = dns.trim()
+                if (dnsIp.isNotEmpty()) {
+                    try {
+                        builder.addDnsServer(dnsIp)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to add DNS server: $dnsIp", e)
                     }
                 }
             }
+        }
+
+        // Add routes from allowedIPs
+        config.allowedIPs.forEach { route ->
+            try {
+                val routeParts = route.split("/")
+                val routeAddress = routeParts[0]
+                val routePrefix = if (routeParts.size > 1) routeParts[1].toInt() else 32
+                builder.addRoute(routeAddress, routePrefix)
+                Log.d(TAG, "Added route: $route")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to add route: $route", e)
+            }
+        }
+
+        // Exclude the VPN server from the tunnel to prevent routing loops
+        try {
+            val serverHost = URL(normalizeServerUrl(currentServer)).host
+            builder.addDisallowedApplication(packageName) // Don't route our own traffic
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing event", e)
+            Log.w(TAG, "Failed to set server bypass", e)
+        }
+
+        return builder.establish()
+    }
+
+    private fun authenticate(server: String, username: String, password: String): WireGuardConfig {
+        val baseUrl = normalizeServerUrl(server)
+
+        // Login
+        val loginUrl = URL("$baseUrl/api/auth/login")
+        val loginData = JSONObject().apply {
+            put("username", username)
+            put("password", password)
+        }
+
+        val token = httpPost(loginUrl, loginData.toString())
+            .let { JSONObject(it).getString("token") }
+
+        // Get config
+        val configUrl = URL("$baseUrl/api/config")
+        val configResponse = httpGet(configUrl, token)
+        val configJson = JSONObject(configResponse)
+
+        val wgConfig = configJson.getJSONObject("config")
+        val peer = wgConfig.getJSONObject("peer")
+
+        val allowedIPs = peer.getString("allowed_ips")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        // Get tunnel URL for WebSocket endpoint (used for the tunnel, but we convert to direct endpoint)
+        val tunnelUrl = configJson.optString("tunnel_url", server)
+        val peerEndpoint = buildPeerEndpoint(tunnelUrl, server)
+
+        return WireGuardConfig(
+            privateKey = wgConfig.getString("private_key"),
+            address = wgConfig.getString("address"),
+            dns = wgConfig.optString("dns", ""),
+            peerPublicKey = peer.getString("public_key"),
+            peerEndpoint = peerEndpoint,
+            allowedIPs = allowedIPs
+        )
+    }
+
+    private fun buildPeerEndpoint(tunnelUrl: String, fallback: String): String {
+        // The peer endpoint should be the server's WireGuard port
+        // In this architecture, we tunnel WireGuard over WebSocket,
+        // so the endpoint is typically the local tunnel proxy
+        // For now, use a standard WireGuard port setup
+        return try {
+            val url = URL(normalizeServerUrl(tunnelUrl.ifEmpty { fallback }))
+            "${url.host}:51820"
+        } catch (e: Exception) {
+            "127.0.0.1:51820"
         }
     }
 
-    private fun setupVpnInterface(assignedIp: String) {
-        // Note: In a real implementation, the SDK would provide the full
-        // WireGuard config and we'd create the TUN interface here.
-        // For now, the SDK uses userspace networking (netstack).
+    private fun normalizeServerUrl(server: String): String {
+        var url = server.trimEnd('/')
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = if (url.contains(":") && !url.substringAfter(":").equals("443")) {
+                "http://$url"
+            } else {
+                "https://$url"
+            }
+        }
+        return url
+    }
 
-        // This is a placeholder - actual VPN routing would require:
-        // 1. Getting the WireGuard config from SDK
-        // 2. Creating TUN interface with Builder
-        // 3. Routing packets through the tunnel
+    private fun httpPost(url: URL, body: String): String {
+        val connection = url.openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
 
-        Log.d(TAG, "VPN interface setup for IP: $assignedIp")
+            OutputStreamWriter(connection.outputStream).use { writer ->
+                writer.write(body)
+            }
+
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                throw Exception("HTTP ${connection.responseCode}: ${connection.responseMessage}")
+            }
+
+            BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
+                reader.readText()
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun httpGet(url: URL, token: String): String {
+        val connection = url.openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Authorization", "Bearer $token")
+
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                throw Exception("HTTP ${connection.responseCode}: ${connection.responseMessage}")
+            }
+
+            BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
+                reader.readText()
+            }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun startForegroundNotification(message: String) {
@@ -227,4 +357,13 @@ class WireSocketVpnService : VpnService(), EventHandler {
         val manager = getSystemService(android.app.NotificationManager::class.java)
         manager.notify(WireSocketApp.VPN_NOTIFICATION_ID, notification)
     }
+
+    data class WireGuardConfig(
+        val privateKey: String,
+        val address: String,
+        val dns: String,
+        val peerPublicKey: String,
+        val peerEndpoint: String,
+        val allowedIPs: List<String>
+    )
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import NetworkExtension
 import Mobile
 
 enum ConnectionState: String {
@@ -28,14 +29,28 @@ class VPNManager: ObservableObject {
     @Published var savedServer: String = ""
     @Published var savedUsername: String = ""
 
-    private var client: MobileClient?
-    private let defaults = UserDefaults.standard
+    private var vpnManager: NETunnelProviderManager?
+    private var statusObserver: NSObjectProtocol?
+    private var statsTimer: Timer?
 
+    private let defaults = UserDefaults.standard
     private let serverKey = "saved_server"
     private let usernameKey = "saved_username"
 
+    // Bundle identifier for the Network Extension
+    private let tunnelBundleId = "com.wiresocket.WireSocket.PacketTunnel"
+
     init() {
         loadSavedCredentials()
+        loadVPNConfiguration()
+        setupStatusObserver()
+    }
+
+    deinit {
+        if let observer = statusObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        statsTimer?.invalidate()
     }
 
     private func loadSavedCredentials() {
@@ -50,6 +65,59 @@ class VPNManager: ObservableObject {
         savedUsername = username
     }
 
+    private func loadVPNConfiguration() {
+        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
+            if let error = error {
+                print("Failed to load VPN configuration: \(error)")
+                return
+            }
+
+            // Find our VPN manager or create a new one
+            self?.vpnManager = managers?.first { manager in
+                (manager.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier == self?.tunnelBundleId
+            }
+
+            // Update current status
+            if let manager = self?.vpnManager {
+                self?.updateStatus(from: manager.connection.status)
+            }
+        }
+    }
+
+    private func setupStatusObserver() {
+        statusObserver = NotificationCenter.default.addObserver(
+            forName: .NEVPNStatusDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            if let connection = notification.object as? NEVPNConnection {
+                self?.updateStatus(from: connection.status)
+            }
+        }
+    }
+
+    private func updateStatus(from vpnStatus: NEVPNStatus) {
+        switch vpnStatus {
+        case .invalid:
+            status.state = .disconnected
+        case .disconnected:
+            status.state = .disconnected
+            stopStatsTimer()
+        case .connecting:
+            status.state = .connecting
+        case .connected:
+            status.state = .connected
+            status.connectedAt = Date()
+            startStatsTimer()
+        case .reasserting:
+            status.state = .reconnecting
+        case .disconnecting:
+            status.state = .disconnecting
+        @unknown default:
+            status.state = .disconnected
+        }
+    }
+
     func connect(server: String, username: String, password: String) {
         guard status.state == .disconnected || status.state == .failed else {
             return
@@ -57,34 +125,76 @@ class VPNManager: ObservableObject {
 
         status.state = .connecting
         saveCredentials(server: server, username: username)
+        status.server = server
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            do {
-                // Create SDK client
-                var error: NSError?
-                let newClient = MobileNewClient(&error)
-                if let err = error {
-                    throw err
-                }
+        // Create or update VPN configuration
+        createOrUpdateVPNConfiguration(server: server, username: username, password: password)
+    }
 
-                guard let client = newClient else {
-                    throw NSError(domain: "VPNManager", code: -1,
-                                  userInfo: [NSLocalizedDescriptionKey: "Failed to create client"])
-                }
+    private func createOrUpdateVPNConfiguration(server: String, username: String, password: String) {
+        let manager = vpnManager ?? NETunnelProviderManager()
 
-                self?.client = client
+        let protocolConfig = NETunnelProviderProtocol()
+        protocolConfig.providerBundleIdentifier = tunnelBundleId
+        protocolConfig.serverAddress = server
 
-                // Set event handler
-                client.setEventHandler(EventHandlerImpl(manager: self))
+        // Store credentials in protocol configuration
+        // Note: In production, use Keychain for passwords
+        protocolConfig.providerConfiguration = [
+            "server": server,
+            "username": username,
+            "password": password
+        ]
 
-                // Connect
-                try client.connect(server, username: username, password: password, autoReconnect: true)
+        manager.protocolConfiguration = protocolConfig
+        manager.localizedDescription = "WireSocket VPN"
+        manager.isEnabled = true
 
-            } catch {
+        manager.saveToPreferences { [weak self] error in
+            if let error = error {
                 DispatchQueue.main.async {
                     self?.status.state = .failed
                     self?.status.error = error.localizedDescription
                 }
+                return
+            }
+
+            // Reload and connect
+            manager.loadFromPreferences { [weak self] error in
+                if let error = error {
+                    DispatchQueue.main.async {
+                        self?.status.state = .failed
+                        self?.status.error = error.localizedDescription
+                    }
+                    return
+                }
+
+                self?.vpnManager = manager
+                self?.startVPNConnection(server: server, username: username, password: password)
+            }
+        }
+    }
+
+    private func startVPNConnection(server: String, username: String, password: String) {
+        guard let manager = vpnManager else {
+            status.state = .failed
+            status.error = "VPN manager not configured"
+            return
+        }
+
+        do {
+            // Pass options to the Network Extension
+            let options: [String: NSObject] = [
+                "server": server as NSObject,
+                "username": username as NSObject,
+                "password": password as NSObject
+            ]
+
+            try manager.connection.startVPNTunnel(options: options)
+        } catch {
+            DispatchQueue.main.async { [weak self] in
+                self?.status.state = .failed
+                self?.status.error = error.localizedDescription
             }
         }
     }
@@ -95,78 +205,41 @@ class VPNManager: ObservableObject {
         }
 
         status.state = .disconnecting
+        vpnManager?.connection.stopVPNTunnel()
+    }
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            do {
-                try self?.client?.disconnect()
-                try self?.client?.close()
-                self?.client = nil
-            } catch {
-                print("Disconnect error: \(error)")
-            }
+    // MARK: - Stats
 
-            DispatchQueue.main.async {
-                self?.status = VPNStatus()
-            }
+    private func startStatsTimer() {
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            self?.fetchStats()
         }
     }
 
-    fileprivate func handleEvent(type: String, jsonData: String) {
-        guard let data = jsonData.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+    private func stopStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+    }
+
+    private func fetchStats() {
+        guard let session = vpnManager?.connection as? NETunnelProviderSession else {
             return
         }
 
-        DispatchQueue.main.async { [weak self] in
-            switch type {
-            case "connecting":
-                self?.status.state = .connecting
-
-            case "connected":
-                if let statusJson = json["status"] as? [String: Any] {
-                    self?.status.state = .connected
-                    self?.status.assignedIP = statusJson["assignedIP"] as? String ?? ""
-                    self?.status.server = statusJson["server"] as? String ?? ""
-                    if let timestamp = statusJson["connectedAtUnix"] as? Int64, timestamp > 0 {
-                        self?.status.connectedAt = Date(timeIntervalSince1970: TimeInterval(timestamp))
-                    }
+        do {
+            try session.sendProviderMessage("getStats".data(using: .utf8)!) { [weak self] response in
+                guard let data = response,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    return
                 }
 
-            case "disconnected":
-                self?.status = VPNStatus()
-
-            case "reconnecting":
-                self?.status.state = .reconnecting
-
-            case "error":
-                self?.status.state = .failed
-                self?.status.error = json["error"] as? String ?? "Unknown error"
-
-            case "stats_updated":
-                if let stats = json["stats"] as? [String: Any] {
-                    self?.status.rxBytes = stats["rxBytes"] as? Int64 ?? 0
-                    self?.status.txBytes = stats["txBytes"] as? Int64 ?? 0
-                    self?.status.rxSpeed = stats["rxSpeed"] as? Int64 ?? 0
-                    self?.status.txSpeed = stats["txSpeed"] as? Int64 ?? 0
+                DispatchQueue.main.async {
+                    self?.status.rxBytes = json["rxBytes"] as? Int64 ?? 0
+                    self?.status.txBytes = json["txBytes"] as? Int64 ?? 0
                 }
-
-            default:
-                break
             }
+        } catch {
+            print("Failed to fetch stats: \(error)")
         }
-    }
-}
-
-// Event handler implementation for Go SDK callback
-class EventHandlerImpl: NSObject, MobileEventHandlerProtocol {
-    private weak var manager: VPNManager?
-
-    init(manager: VPNManager?) {
-        self.manager = manager
-    }
-
-    func onEvent(_ eventType: String?, jsonData: String?) {
-        guard let type = eventType, let data = jsonData else { return }
-        manager?.handleEvent(type: type, jsonData: data)
     }
 }

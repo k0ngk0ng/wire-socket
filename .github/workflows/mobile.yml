@@ -1,0 +1,189 @@
+name: Build Mobile Apps
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0-dev' }}
+
+jobs:
+  # Build Android APK
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+
+      - name: Build mobile SDK (.aar)
+        working-directory: sdk
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p ../mobile/android/app/libs
+          gomobile bind -v \
+            -target=android \
+            -androidapi=24 \
+            -javapkg=com.wiresocket \
+            -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=$VERSION" \
+            -o ../mobile/android/app/libs/mobile.aar \
+            ./mobile
+
+      - name: Update Android versionName
+        working-directory: mobile/android
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/versionName = \".*\"/versionName = \"$VERSION\"/" app/build.gradle.kts
+
+      - name: Make gradlew executable
+        working-directory: mobile/android
+        run: chmod +x ./gradlew
+
+      - name: Build APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: mobile/android/app/build/outputs/apk/release/*.apk
+
+  # Build iOS (requires macOS runner with Xcode)
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+
+      - name: Build mobile SDK (.xcframework)
+        working-directory: sdk
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p ../mobile/ios/WireSocket/Frameworks
+          gomobile bind -v \
+            -target=ios \
+            -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=$VERSION" \
+            -o ../mobile/ios/WireSocket/Frameworks/Mobile.xcframework \
+            ./mobile
+
+      - name: Update iOS MARKETING_VERSION
+        working-directory: mobile/ios/WireSocket
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = $VERSION;/g" WireSocket.xcodeproj/project.pbxproj
+
+      - name: Build iOS app (simulator)
+        working-directory: mobile/ios/WireSocket
+        run: |
+          xcodebuild -project WireSocket.xcodeproj \
+            -scheme WireSocket \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      # Note: For App Store distribution, you would need:
+      # 1. Apple Developer Program membership
+      # 2. Provisioning profiles and certificates
+      # 3. An archive build step instead of simulator build
+      # 4. Export IPA using xcodebuild -exportArchive
+      #
+      # Example for real device/App Store build (requires secrets):
+      # - name: Build iOS app (device)
+      #   working-directory: mobile/ios/WireSocket
+      #   run: |
+      #     xcodebuild -project WireSocket.xcodeproj \
+      #       -scheme WireSocket \
+      #       -configuration Release \
+      #       -sdk iphoneos \
+      #       -archivePath build/WireSocket.xcarchive \
+      #       archive
+      #
+      # - name: Export IPA
+      #   run: |
+      #     xcodebuild -exportArchive \
+      #       -archivePath build/WireSocket.xcarchive \
+      #       -exportPath build \
+      #       -exportOptionsPlist ExportOptions.plist
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build
+          path: mobile/ios/WireSocket/build/
+
+  # Release mobile apps
+  release-mobile:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Android APK
+          find artifacts -name '*.apk' -exec cp {} release/ \;
+          # List files
+          ls -la release/
+
+      - name: Upload to existing release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
