@@ -176,6 +176,7 @@ jobs:
         with:
           name: ios-build
           path: client/mobile/ios/WireSocket/build/
+          if-no-files-found: ignore
 
   # Release mobile apps
   release-mobile:

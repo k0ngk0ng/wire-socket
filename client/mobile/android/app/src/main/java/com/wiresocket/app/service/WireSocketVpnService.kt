@@ -14,6 +14,7 @@ import com.wiresocket.app.data.VpnStateHolder
 import com.wiresocket.app.data.VpnStatus
 import com.wiresocket.app.ui.MainActivity
 import com.wiresocket.mobile.Mobile
+import com.wiresocket.mobile.Tunnel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -39,7 +40,7 @@ class WireSocketVpnService : VpnService() {
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var tunnel: Mobile.Tunnel? = null
+    private var tunnel: Tunnel? = null
     private val isRunning = AtomicBoolean(false)
     private var currentServer: String = ""
 
