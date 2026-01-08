@@ -37,7 +37,7 @@ gomobile bind -v \
     -target=android \
     -androidapi=24 \
     -javapkg=com.wiresocket \
-    -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=${VERSION}" \
+    -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.version=${VERSION}" \
     -o "$LIBS_DIR/mobile.aar" \
     ./mobile
 

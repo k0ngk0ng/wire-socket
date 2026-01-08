@@ -60,7 +60,7 @@ jobs:
             -target=android \
             -androidapi=24 \
             -javapkg=com.wiresocket \
-            -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=$VERSION" \
+            -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.version=$VERSION" \
             -o ../mobile/android/app/libs/mobile.aar \
             ./mobile
 
@@ -124,7 +124,7 @@ jobs:
           mkdir -p ../mobile/ios/WireSocket/Frameworks
           gomobile bind -v \
             -target=ios \
-            -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=$VERSION" \
+            -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.version=$VERSION" \
             -o ../mobile/ios/WireSocket/Frameworks/Mobile.xcframework \
             ./mobile
 

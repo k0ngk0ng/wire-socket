@@ -43,7 +43,7 @@ mkdir -p "$FRAMEWORKS_DIR"
 cd "$SDK_DIR"
 gomobile bind -v \
     -target=ios \
-    -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.Version=${VERSION}" \
+    -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.version=${VERSION}" \
     -o "$FRAMEWORKS_DIR/Mobile.xcframework" \
     ./mobile
 
