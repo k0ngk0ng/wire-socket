@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	wg "wire-socket/pkg/wireguard"
+	wg "github.com/k0ngk0ng/wire-socket/sdk/wireguard"
 )
 
 // Mode represents the WireGuard operation mode

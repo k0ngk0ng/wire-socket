@@ -4,8 +4,8 @@ go 1.24.0
 
 require (
 	github.com/gorilla/websocket v1.5.1
-	github.com/k0ngk0ng/wire-socket/pkg/wireguard v0.0.0
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
 )
 
 require (
@@ -19,10 +19,6 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6 // indirect
 )
 
-replace (
-	github.com/k0ngk0ng/wire-socket/pkg/wireguard => ../pkg/wireguard
-	github.com/k0ngk0ng/wire-socket/pkg/wstunnel => ../pkg/wstunnel
-)
+replace github.com/k0ngk0ng/wire-socket/pkg/wstunnel => ../pkg/wstunnel

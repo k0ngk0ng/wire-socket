@@ -8,10 +8,7 @@ require (
 	github.com/kardianos/service v1.2.4
 )
 
-replace (
-	github.com/k0ngk0ng/wire-socket/pkg/wireguard => ../../pkg/wireguard
-	github.com/k0ngk0ng/wire-socket/sdk => ../../sdk
-)
+replace github.com/k0ngk0ng/wire-socket/sdk => ../../sdk
 
 require (
 	github.com/bytedance/sonic v1.14.0 // indirect
@@ -28,7 +25,6 @@ require (
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/k0ngk0ng/wire-socket/pkg/wireguard v0.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

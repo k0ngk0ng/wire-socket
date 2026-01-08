@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	wg "github.com/k0ngk0ng/wire-socket/pkg/wireguard"
+	wg "github.com/k0ngk0ng/wire-socket/sdk/wireguard"
 )
 
-// wgBackendImpl implements wgBackend using the pkg/wireguard package
+// wgBackendImpl implements wgBackend using the sdk/wireguard package
 type wgBackendImpl struct {
 	backend wg.ClientBackend
 	name    string
