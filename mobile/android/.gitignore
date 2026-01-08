@@ -4,6 +4,7 @@
 *.dex
 *.class
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 !app/libs/*.aar
 
 # Gradle
