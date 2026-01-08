@@ -1,6 +1,14 @@
 # WireSocket SDK
 
-Go SDK for building custom WireSocket VPN clients.
+Go SDK for building custom WireSocket VPN clients and servers.
+
+## Features
+
+- **Client SDK**: Full-featured VPN client with event-driven API
+- **Server SDK**: WireGuard VPN server with peer management
+- **WireGuard Backends**: Kernel and userspace implementations
+- **Mobile Support**: iOS and Android bindings via gomobile
+- **Cross-Platform**: Linux, macOS, Windows, iOS, Android
 
 ## Installation
 
@@ -8,7 +16,7 @@ Go SDK for building custom WireSocket VPN clients.
 go get github.com/k0ngk0ng/wire-socket/sdk
 ```
 
-## Quick Start
+## Quick Start - Client
 
 ```go
 package main
@@ -276,6 +284,87 @@ tunnel.Stop()
 ```
 
 See [client/mobile/android](../client/mobile/android) and [client/mobile/ios](../client/mobile/ios) for example implementations.
+
+## Server SDK
+
+The `sdk/server` package provides VPN server functionality:
+
+```go
+package main
+
+import (
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/k0ngk0ng/wire-socket/sdk/server"
+)
+
+func main() {
+    // Create server with config
+    cfg := server.DefaultConfig()
+    cfg.ListenPort = 51820
+    cfg.Address = "10.0.0.1/24"
+    cfg.Subnet = "10.0.0.0/24"
+
+    srv, err := server.New(cfg)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Start server
+    if err := srv.Start(); err != nil {
+        log.Fatal(err)
+    }
+    defer srv.Stop()
+
+    log.Printf("Server started on port %d", srv.GetListenPort())
+    log.Printf("Public key: %s", srv.GetPublicKey())
+
+    // Wait for shutdown signal
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+    <-sigCh
+}
+```
+
+### Server API
+
+```go
+// Create and start server
+srv, _ := server.New(server.DefaultConfig())
+srv.Start()
+defer srv.Stop()
+
+// Peer management
+srv.AddPeer(publicKey, "10.0.0.2/32")
+srv.RemovePeer(publicKey)
+peers := srv.GetPeers()
+
+// Get server info
+publicKey := srv.GetPublicKey()
+port := srv.GetListenPort()
+stats, _ := srv.GetPeerStats()
+```
+
+## Package Structure
+
+```
+sdk/
+├── client.go           # VPN client
+├── types.go            # Shared types
+├── server/             # VPN server
+│   ├── server.go       # Server implementation
+│   └── ip_allocator.go # IP address allocation
+├── wireguard/          # WireGuard backends
+│   ├── backend.go      # Backend interface
+│   ├── kernel.go       # Kernel mode
+│   └── userspace.go    # Userspace mode
+└── mobile/             # Mobile bindings
+    ├── tunnel.go       # Mobile tunnel
+    └── client.go       # Mobile client
+```
 
 ## License
 
