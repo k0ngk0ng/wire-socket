@@ -259,15 +259,19 @@ func (k *KernelBackend) GetDeviceName() string {
 
 // Close shuts down the WireGuard interface
 func (k *KernelBackend) Close() error {
+	// Get references under lock
 	k.mu.Lock()
-	defer k.mu.Unlock()
+	client := k.client
+	name := k.name
+	k.client = nil
+	k.mu.Unlock()
 
-	if k.client != nil {
-		k.client.Close()
-		k.client = nil
+	// Close client outside the lock
+	if client != nil {
+		client.Close()
 	}
 
-	return destroyKernelInterface(k.name)
+	return destroyKernelInterface(name)
 }
 
 // SetRoutes configures routing for the VPN (client-specific)

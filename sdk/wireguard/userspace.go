@@ -192,17 +192,36 @@ func (u *UserspaceBackend) RemovePeer(publicKey string) error {
 func (u *UserspaceBackend) GetStats() (Stats, error) {
 	// Get device reference under lock
 	u.mu.RLock()
-	device := u.wgDevice
+	dev := u.wgDevice
+	lastStats := u.lastStats
+	lastUpdate := u.lastUpdate
 	u.mu.RUnlock()
 
-	if device == nil {
+	if dev == nil {
 		return Stats{}, fmt.Errorf("device not initialized")
 	}
 
-	// Call IpcGet outside the lock to avoid blocking other operations
-	ipcOutput, err := device.IpcGet()
-	if err != nil {
-		return Stats{}, fmt.Errorf("failed to get device stats: %w", err)
+	// Call IpcGet with timeout to avoid blocking forever
+	type ipcResult struct {
+		output string
+		err    error
+	}
+	resultChan := make(chan ipcResult, 1)
+	go func() {
+		output, err := dev.IpcGet()
+		resultChan <- ipcResult{output, err}
+	}()
+
+	var ipcOutput string
+	select {
+	case result := <-resultChan:
+		if result.err != nil {
+			return Stats{}, fmt.Errorf("failed to get device stats: %w", result.err)
+		}
+		ipcOutput = result.output
+	case <-time.After(2 * time.Second):
+		// Return cached stats on timeout
+		return lastStats, nil
 	}
 
 	var totalRx, totalTx uint64
@@ -220,12 +239,12 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 	defer u.mu.Unlock()
 
 	now := time.Now()
-	elapsed := now.Sub(u.lastUpdate).Seconds()
+	elapsed := now.Sub(lastUpdate).Seconds()
 
 	var rxSpeed, txSpeed uint64
-	if elapsed > 0 && u.lastUpdate != (time.Time{}) {
-		rxSpeed = uint64(float64(totalRx-u.lastStats.RxBytes) / elapsed)
-		txSpeed = uint64(float64(totalTx-u.lastStats.TxBytes) / elapsed)
+	if elapsed > 0 && lastUpdate != (time.Time{}) {
+		rxSpeed = uint64(float64(totalRx-lastStats.RxBytes) / elapsed)
+		txSpeed = uint64(float64(totalTx-lastStats.TxBytes) / elapsed)
 	}
 
 	stats := Stats{
@@ -243,16 +262,35 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 
 // GetPeerStats returns statistics for all peers
 func (u *UserspaceBackend) GetPeerStats() ([]PeerStats, error) {
+	// Get device reference under lock
 	u.mu.RLock()
-	defer u.mu.RUnlock()
+	dev := u.wgDevice
+	u.mu.RUnlock()
 
-	if u.wgDevice == nil {
+	if dev == nil {
 		return nil, fmt.Errorf("device not initialized")
 	}
 
-	ipcOutput, err := u.wgDevice.IpcGet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get device stats: %w", err)
+	// Call IpcGet with timeout to avoid blocking forever
+	type ipcResult struct {
+		output string
+		err    error
+	}
+	resultChan := make(chan ipcResult, 1)
+	go func() {
+		output, err := dev.IpcGet()
+		resultChan <- ipcResult{output, err}
+	}()
+
+	var ipcOutput string
+	select {
+	case result := <-resultChan:
+		if result.err != nil {
+			return nil, fmt.Errorf("failed to get device stats: %w", result.err)
+		}
+		ipcOutput = result.output
+	case <-time.After(2 * time.Second):
+		return nil, fmt.Errorf("timeout getting peer stats")
 	}
 
 	var peers []PeerStats
@@ -317,22 +355,26 @@ func (u *UserspaceBackend) GetDeviceName() string {
 
 // Close shuts down the WireGuard interface
 func (u *UserspaceBackend) Close() error {
+	// Get references under lock
 	u.mu.Lock()
-	defer u.mu.Unlock()
+	wgDev := u.wgDevice
+	tunDev := u.tunDevice
+	u.wgDevice = nil
+	u.tunDevice = nil
+	u.mu.Unlock()
 
 	// Clean up routes before closing the interface
 	cleanupRoutes()
 
-	if u.wgDevice != nil {
-		u.wgDevice.Close()
-		u.wgDevice = nil
+	// Close devices outside the lock to avoid blocking other operations
+	if wgDev != nil {
+		wgDev.Close()
 	}
 
-	if u.tunDevice != nil {
-		if err := u.tunDevice.Close(); err != nil {
+	if tunDev != nil {
+		if err := tunDev.Close(); err != nil {
 			log.Printf("Failed to close TUN device: %v", err)
 		}
-		u.tunDevice = nil
 	}
 
 	return nil

@@ -116,15 +116,25 @@ func (s *Server) connect(c *gin.Context) {
 }
 
 func (s *Server) disconnect(c *gin.Context) {
-	if err := s.connMgr.Disconnect(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
+	// Use a channel with timeout to prevent blocking if SDK is stuck
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- s.connMgr.Disconnect()
+	}()
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "disconnected",
-		"message": "VPN disconnected successfully",
-	})
+	select {
+	case err := <-errChan:
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "disconnected",
+			"message": "VPN disconnected successfully",
+		})
+	case <-time.After(5 * time.Second):
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "disconnect timed out"})
+	}
 }
 
 func (s *Server) getStatus(c *gin.Context) {

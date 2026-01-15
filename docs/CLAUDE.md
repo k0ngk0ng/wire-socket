@@ -4,10 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WireSocket is a cross-platform VPN solution with three main components:
+WireSocket is a cross-platform VPN solution with four main components:
+
+- **SDK** (Go): Core WireGuard and tunnel functionality, shared by client and mobile apps
 - **Server** (Go): HTTP API + WireGuard + built-in WebSocket tunnel
-- **Client Backend** (Go): System service managing WireGuard interfaces and WebSocket tunnel client
+- **Client Backend** (Go): System service managing WireGuard interfaces via SDK
 - **Client Frontend** (Electron): Desktop UI for VPN management
+- **Mobile Apps** (Android/iOS): Native apps using SDK via gomobile bindings
 
 ## Build Commands
 
@@ -35,6 +38,19 @@ npm run build          # Build distribution packages
 npm run build:mac      # macOS package
 npm run build:win      # Windows package
 npm run build:linux    # Linux package
+```
+
+### SDK (for mobile)
+
+```bash
+cd sdk
+go mod tidy
+
+# Build Android AAR
+gomobile bind -v -target=android -androidapi=24 -javapkg=com.wiresocket -o mobile.aar ./mobile
+
+# Build iOS xcframework
+gomobile bind -v -target=ios -o Mobile.xcframework ./mobile
 ```
 
 ## Running the System
@@ -163,6 +179,35 @@ The client backend runs as a system service (Windows Service/macOS LaunchDaemon/
 
 **Service Auto-Installation**: The Electron app automatically installs and starts the backend service on first launch, requesting administrator password via system dialog.
 
+### SDK Architecture
+
+The SDK (`sdk/`) provides core VPN functionality used by both desktop and mobile clients:
+
+- **`client.go`**: Main VPN client with connection lifecycle management
+  - Thread-safe state management with RWMutex
+  - Automatic reconnection on connection loss
+  - Connection monitoring in background goroutine
+
+- **`tunnel.go`**: WebSocket-UDP tunnel implementation
+  - Forwards WireGuard UDP packets over WebSocket
+  - Ping/pong keepalive mechanism
+  - Graceful shutdown with panic recovery
+
+- **`wireguard/userspace.go`**: Pure Go WireGuard implementation
+  - No external WireGuard installation required
+  - Uses `golang.zx2c4.com/wireguard` package
+  - Platform-specific TUN device creation
+
+- **`mobile/`**: gomobile bindings for Android/iOS
+  - Exposes simplified API for mobile apps
+  - Handles platform-specific networking
+
+**Important Concurrency Notes**:
+
+- Never hold mutex locks while calling blocking operations (IpcGet, Stop, Close)
+- Use RLock to get references, release lock, then call blocking operations
+- Always check `running` state before accessing shared resources
+
 ### Traffic Flow
 
 ```
@@ -244,6 +289,7 @@ sudo ./vpn-client -service uninstall
 ## Database Schema
 
 Tables auto-created on first run:
+
 - `users`: User accounts (username, email, password_hash, is_active, is_admin)
 - `servers`: VPN server configs
 - `allocated_ips`: IP allocations to users (with public keys)
@@ -266,20 +312,28 @@ SELECT * FROM users;
 # Check server API
 curl http://localhost:8080/health
 
-# Check client backend API
+# Check client backend API (returns version info)
 curl http://127.0.0.1:41945/health
+# Response: {"status":"ok","version":"0.9.6"}
+
+# Check client connection status (may timeout if deadlocked)
+curl -m 5 http://127.0.0.1:41945/api/status
 
 # View WireGuard interfaces
 sudo wg show
 
 # Check running processes
 ps aux | grep -E "wire-socket-server|wire-socket-client"
+
+# Find client backend port (if not 41945)
+lsof -i -P | grep wire-socket
 ```
 
 ## Admin Tools
 
 ### Web Admin Interface
 Access the admin UI at `http://localhost:8080/admin` after starting the server.
+
 - Login with admin credentials
 - Manage users, routes, and NAT rules
 - Apply NAT rules without server restart
@@ -314,21 +368,25 @@ Environment variable: `WSCTL_CONFIG` to specify config file path (default: `conf
 ## Common Development Tasks
 
 ### Adding New API Endpoints
+
 - Server: Add routes in `internal/api/router.go`
 - Client: Add handlers in `internal/api/server.go`
 - Both use Gin framework: `router.GET()`, `router.POST()`, etc.
 
 ### Modifying Database Schema
+
 - Update models in `internal/database/db.go`
 - GORM auto-migrates on startup
 - For major changes, consider migration scripts
 
 ### Changing WireGuard Configuration
+
 - Server: Modify `internal/wireguard/config_generator.go`
 - Client: Modify `internal/wireguard/interface.go`
 - Use wgctrl API: `client.ConfigureDevice()`
 
 ### Updating Electron UI
+
 - Edit `public/index.html` for layout
 - API calls use `fetch()` to `http://127.0.0.1:41945`
 - IPC communication via `src/preload/index.js`
@@ -346,8 +404,11 @@ sudo ./wire-socket-server  # Logs to stdout
 # Linux
 journalctl -u WireSocketClient -f
 
-# macOS
-tail -f /var/log/system.log | grep WireSocket
+# macOS (launchd service logs)
+log show --predicate 'subsystem == "com.apple.xpc.launchd"' --last 5m | grep -i wiresocket
+# Or check stdout/stderr logs
+cat /var/log/WireSocketClient.out.log
+cat /var/log/WireSocketClient.err.log
 
 # Direct run (for debugging)
 cd client/backend
@@ -357,22 +418,34 @@ sudo ./wire-socket-client  # Logs to stdout
 ### Common Issues
 
 **"Failed to configure WireGuard device"**
+
 - If using `mode: "kernel"`: Install WireGuard tools: `sudo apt install wireguard-tools` (Linux) or `brew install wireguard-tools` (macOS)
 - If using `mode: "userspace"` (default): Ensure you have root/sudo privileges for TUN device creation
 - On Linux with kernel mode: Load kernel module: `sudo modprobe wireguard`
 
 **"Interface name must be utun[0-9]*"** (macOS)
+
 - macOS requires TUN interfaces to use the `utun` naming convention
 - The client automatically uses `utun` prefix on macOS
 
 **"Permission denied" or "operation not permitted"**
+
 - Run with sudo: `sudo ./wire-socket-server` or `sudo ./wire-socket-client`
 - On macOS, creating TUN devices requires root privileges
 
 **"Connection failed"**
+
 - Ensure server is running: `ps aux | grep wire-socket-server`
 - Verify ports open: 8080 (API), 443 (tunnel), 51820 (WireGuard UDP)
 - Check credentials: default is admin/admin123
+
+**API requests hang/timeout (e.g., `/api/status`)**
+
+- This indicates a deadlock in the SDK or client backend
+- Check if mutex is held while calling blocking operations
+- The `/api/status` endpoint has a 3-second timeout as a safeguard
+- Restart the client backend service to recover
+- Common causes: calling `IpcGet()`, `Stop()`, or `Close()` while holding a write lock
 
 **nginx Reverse Proxy for WebSocket Tunnel**
 ```nginx

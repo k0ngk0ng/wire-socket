@@ -23,7 +23,7 @@
     "wireguard",
     "electron"
   ],
-  "author": "Your Name",
+  "author": "chenj",
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.0.0",

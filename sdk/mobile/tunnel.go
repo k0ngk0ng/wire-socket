@@ -168,17 +168,31 @@ func (t *Tunnel) GetStats() string {
 
 	stats := TunnelStats{}
 	if dev != nil {
-		// Get stats from WireGuard device
-		ipcOutput, err := dev.IpcGet()
-		if err == nil {
-			for _, line := range splitLines(ipcOutput) {
-				if len(line) > 9 && line[:9] == "rx_bytes=" {
-					fmt.Sscanf(line, "rx_bytes=%d", &stats.RxBytes)
-				}
-				if len(line) > 9 && line[:9] == "tx_bytes=" {
-					fmt.Sscanf(line, "tx_bytes=%d", &stats.TxBytes)
+		// Get stats from WireGuard device with timeout
+		type ipcResult struct {
+			output string
+			err    error
+		}
+		resultChan := make(chan ipcResult, 1)
+		go func() {
+			output, err := dev.IpcGet()
+			resultChan <- ipcResult{output, err}
+		}()
+
+		select {
+		case result := <-resultChan:
+			if result.err == nil {
+				for _, line := range splitLines(result.output) {
+					if len(line) > 9 && line[:9] == "rx_bytes=" {
+						fmt.Sscanf(line, "rx_bytes=%d", &stats.RxBytes)
+					}
+					if len(line) > 9 && line[:9] == "tx_bytes=" {
+						fmt.Sscanf(line, "tx_bytes=%d", &stats.TxBytes)
+					}
 				}
 			}
+		case <-time.After(2 * time.Second):
+			// Return empty stats on timeout
 		}
 	}
 
