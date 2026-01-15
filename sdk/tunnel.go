@@ -176,11 +176,26 @@ func (t *tunnelClient) forwardUDPToWS(clientMap map[string]*net.UDPAddr, mu *syn
 }
 
 func (t *tunnelClient) forwardWSToUDP(clientMap map[string]*net.UDPAddr, mu *sync.Mutex) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("WebSocket read recovered from panic: %v", r)
+		}
+	}()
+
 	for {
 		select {
 		case <-t.stopChan:
 			return
 		default:
+		}
+
+		t.mu.Lock()
+		running := t.running
+		t.mu.Unlock()
+
+		// Exit if not running
+		if !running {
+			return
 		}
 
 		t.connMu.RLock()
@@ -201,14 +216,23 @@ func (t *tunnelClient) forwardWSToUDP(clientMap map[string]*net.UDPAddr, mu *syn
 			case <-t.stopChan:
 				return
 			default:
+				// Check if connection was closed
+				t.connMu.RLock()
+				currentConn := t.conn
+				t.connMu.RUnlock()
+				if currentConn == nil {
+					// Connection was closed, exit gracefully
+					return
+				}
+
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 					continue
 				}
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					log.Printf("WebSocket read error: %v", err)
 				}
-				time.Sleep(100 * time.Millisecond)
-				continue
+				// Connection error, exit and let reconnect handle it
+				return
 			}
 		}
 
