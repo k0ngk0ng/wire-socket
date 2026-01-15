@@ -190,15 +190,17 @@ func (u *UserspaceBackend) RemovePeer(publicKey string) error {
 
 // GetStats returns traffic statistics
 func (u *UserspaceBackend) GetStats() (Stats, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
+	// Get device reference under lock
+	u.mu.RLock()
+	device := u.wgDevice
+	u.mu.RUnlock()
 
-	if u.wgDevice == nil {
+	if device == nil {
 		return Stats{}, fmt.Errorf("device not initialized")
 	}
 
-	// Get stats via UAPI
-	ipcOutput, err := u.wgDevice.IpcGet()
+	// Call IpcGet outside the lock to avoid blocking other operations
+	ipcOutput, err := device.IpcGet()
 	if err != nil {
 		return Stats{}, fmt.Errorf("failed to get device stats: %w", err)
 	}
@@ -212,6 +214,10 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 			fmt.Sscanf(line, "tx_bytes=%d", &totalTx)
 		}
 	}
+
+	// Update cached stats under lock
+	u.mu.Lock()
+	defer u.mu.Unlock()
 
 	now := time.Now()
 	elapsed := now.Sub(u.lastUpdate).Seconds()
