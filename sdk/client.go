@@ -117,9 +117,9 @@ func (c *Client) Connect(config ConnectConfig) error {
 // Disconnect closes the VPN connection
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if c.state == StateDisconnected {
+		c.mu.Unlock()
 		return nil
 	}
 
@@ -135,24 +135,26 @@ func (c *Client) Disconnect() error {
 		c.statsStop = nil
 	}
 
-	// Stop tunnel
-	if c.tunnelClient != nil {
-		c.tunnelClient.Stop()
-		c.tunnelClient = nil
-	}
-
-	// Stop WireGuard
-	if c.wgBackend != nil {
-		c.wgBackend.Close()
-		c.wgBackend = nil
-	}
-
+	// Capture references before unlocking
+	tunnel := c.tunnelClient
+	wg := c.wgBackend
+	c.tunnelClient = nil
+	c.wgBackend = nil
 	c.state = StateDisconnected
 	c.token = ""
 	c.assignedIP = ""
 	c.config = nil
+	c.mu.Unlock()
 
-	c.emitEventLocked(EventDisconnected, nil, nil)
+	// Stop tunnel and WireGuard outside the lock to avoid blocking reads
+	if tunnel != nil {
+		tunnel.Stop()
+	}
+	if wg != nil {
+		wg.Close()
+	}
+
+	c.emitEvent(EventDisconnected, nil, nil)
 
 	return nil
 }
@@ -535,16 +537,22 @@ func (c *Client) handleReconnect(config ConnectConfig) {
 	}
 	c.reconnecting = true
 	c.state = StateReconnecting
+
+	// Capture references before unlocking
+	tunnel := c.tunnelClient
+	wg := c.wgBackend
+	c.tunnelClient = nil
+	c.wgBackend = nil
 	c.mu.Unlock()
 
 	c.emitEvent(EventReconnecting, nil, nil)
 
-	// Cleanup current connection
-	if c.tunnelClient != nil {
-		c.tunnelClient.Stop()
+	// Cleanup current connection outside the lock
+	if tunnel != nil {
+		tunnel.Stop()
 	}
-	if c.wgBackend != nil {
-		c.wgBackend.Close()
+	if wg != nil {
+		wg.Close()
 	}
 
 	interval := config.ReconnectInterval

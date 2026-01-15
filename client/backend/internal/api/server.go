@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 	"wire-socket-client/internal/sdkadapter"
 
 	"github.com/gin-gonic/gin"
@@ -127,8 +128,22 @@ func (s *Server) disconnect(c *gin.Context) {
 }
 
 func (s *Server) getStatus(c *gin.Context) {
-	status := s.connMgr.GetStatus()
-	c.JSON(http.StatusOK, status)
+	// Use a channel with timeout to prevent blocking if SDK is stuck
+	statusChan := make(chan sdkadapter.Status, 1)
+	go func() {
+		statusChan <- s.connMgr.GetStatus()
+	}()
+
+	select {
+	case status := <-statusChan:
+		c.JSON(http.StatusOK, status)
+	case <-time.After(3 * time.Second):
+		// Return minimal status if GetStatus blocks
+		c.JSON(http.StatusOK, sdkadapter.Status{
+			State: "unknown",
+			Error: "status check timed out",
+		})
+	}
 }
 
 func (s *Server) getServers(c *gin.Context) {
