@@ -193,6 +193,10 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
+	if u.wgDevice == nil {
+		return Stats{}, fmt.Errorf("device not initialized")
+	}
+
 	// Get stats via UAPI
 	ipcOutput, err := u.wgDevice.IpcGet()
 	if err != nil {
@@ -235,6 +239,10 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 func (u *UserspaceBackend) GetPeerStats() ([]PeerStats, error) {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
+
+	if u.wgDevice == nil {
+		return nil, fmt.Errorf("device not initialized")
+	}
 
 	ipcOutput, err := u.wgDevice.IpcGet()
 	if err != nil {

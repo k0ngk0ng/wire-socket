@@ -499,6 +499,7 @@
     const connectBtn = document.getElementById('connectBtn');
 
     let statusCheckInterval = null;
+    let healthCheckInterval = null;
     let backendReady = false;
     let currentRoutes = [];
     let excludedRoutes = [];
@@ -579,6 +580,51 @@
 
       loadSavedCredentials();
       checkStatus();
+      startHealthCheck();
+    }
+
+    // Periodic health check for backend service
+    function startHealthCheck() {
+      if (healthCheckInterval) {
+        clearInterval(healthCheckInterval);
+      }
+      healthCheckInterval = setInterval(async () => {
+        try {
+          const isAvailable = await window.electronAPI.checkService();
+          if (isAvailable) {
+            if (!backendReady) {
+              backendReady = true;
+              backendIndicator.classList.remove('connecting');
+              backendIndicator.classList.add('online');
+              loadingView.classList.add('hidden');
+              checkStatus();
+            }
+          } else {
+            onBackendDown();
+          }
+        } catch (e) {
+          console.log('Health check failed:', e);
+          onBackendDown();
+        }
+      }, 10000); // Check every 10 seconds
+    }
+
+    function onBackendDown() {
+      if (backendReady) {
+        backendReady = false;
+        backendIndicator.classList.remove('online');
+        backendIndicator.classList.remove('connecting');
+        stopStatusCheck();
+        // Show loading view with error state
+        loadingView.innerHTML = `
+          <div style="color: #e74c3c; font-size: 40px; margin-bottom: 15px;">⚠️</div>
+          <div class="loading-text" style="color: #e74c3c;">Backend service unavailable</div>
+          <div class="loading-subtext">Attempting to reconnect...</div>
+        `;
+        loadingView.classList.remove('hidden');
+        loginForm.classList.add('hidden');
+        connectedView.classList.add('hidden');
+      }
     }
 
     // Normalize server URL - add https:// if no scheme

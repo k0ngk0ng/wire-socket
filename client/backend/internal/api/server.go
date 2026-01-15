@@ -14,10 +14,11 @@ type Server struct {
 	connMgr    *sdkadapter.Manager
 	httpServer *http.Server
 	engine     *gin.Engine
+	version    string
 }
 
 // NewServer creates a new API server
-func NewServer(connMgr *sdkadapter.Manager, addr string) *Server {
+func NewServer(connMgr *sdkadapter.Manager, addr string, version string) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.Default()
 
@@ -38,6 +39,7 @@ func NewServer(connMgr *sdkadapter.Manager, addr string) *Server {
 	s := &Server{
 		connMgr: connMgr,
 		engine:  engine,
+		version: version,
 		httpServer: &http.Server{
 			Addr:    addr,
 			Handler: engine,
@@ -90,7 +92,7 @@ func (s *Server) Stop() error {
 func (s *Server) healthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
-		"version": "1.0.0",
+		"version": s.version,
 	})
 }
 

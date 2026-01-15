@@ -116,7 +116,7 @@ func (p *Program) run() {
 
 	// Start local API server
 	addr := fmt.Sprintf(":%d", port)
-	p.apiServer = api.NewServer(p.connMgr, addr)
+	p.apiServer = api.NewServer(p.connMgr, addr, Version)
 	if err := p.apiServer.Start(); err != nil {
 		logger.Errorf("Failed to start API server: %v", err)
 		return
