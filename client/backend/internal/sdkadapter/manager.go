@@ -147,11 +147,12 @@ func (m *Manager) Connect(req ConnectRequest) error {
 		for i := 0; i < 60; i++ {
 			time.Sleep(500 * time.Millisecond)
 			if m.client.IsConnected() {
-				m.mu.Lock()
-				if m.currentServer != nil {
-					m.saveServer(*m.currentServer)
+				m.mu.RLock()
+				serverCopy := m.currentServer
+				m.mu.RUnlock()
+				if serverCopy != nil {
+					m.saveServer(*serverCopy)
 				}
-				m.mu.Unlock()
 				break
 			}
 			if m.client.GetState() == sdk.StateFailed {

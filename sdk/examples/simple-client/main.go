@@ -28,7 +28,7 @@ func main() {
 	// Create SDK client
 	client, err := sdk.New(sdk.Options{
 		StatsInterval: 5 * time.Second,
-		Debug:         true,
+		LogLevel:      sdk.LogLevelDebug,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)

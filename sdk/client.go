@@ -187,15 +187,25 @@ func (c *Client) GetStatus() Status {
 
 // GetStats returns traffic statistics
 func (c *Client) GetStats() Stats {
+	c.logTrace("GetStats() waiting for RLock")
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.logTrace("GetStats() acquired RLock")
+	defer func() {
+		c.mu.RUnlock()
+		c.logTrace("GetStats() released RLock")
+	}()
 	return c.stats
 }
 
 // GetRoutes returns current route information
 func (c *Client) GetRoutes() RouteInfo {
+	c.logTrace("GetRoutes() waiting for RLock")
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.logTrace("GetRoutes() acquired RLock")
+	defer func() {
+		c.mu.RUnlock()
+		c.logTrace("GetRoutes() released RLock")
+	}()
 
 	return RouteInfo{
 		AvailableRoutes: append([]string{}, c.availableRoutes...),
@@ -417,9 +427,26 @@ func (c *Client) setError(err error) {
 }
 
 func (c *Client) emitEvent(eventType EventType, stats *Stats, err error) {
+	// Build status inline instead of calling GetStatus() which would try to acquire RLock again
+	c.logTrace("emitEvent(%s) waiting for RLock", eventType)
 	c.mu.RLock()
-	status := c.GetStatus()
+	c.logTrace("emitEvent(%s) acquired RLock", eventType)
+	status := Status{
+		State: c.state,
+	}
+	if c.config != nil {
+		status.Server = c.config.Server
+	}
+	if c.state == StateConnected {
+		status.AssignedIP = c.assignedIP
+		status.ConnectedAt = c.connectedAt
+		status.Duration = time.Since(c.connectedAt)
+	}
+	if c.state == StateFailed {
+		status.Error = c.status.Error
+	}
 	c.mu.RUnlock()
+	c.logTrace("emitEvent(%s) released RLock", eventType)
 
 	c.emitEventWithStatus(eventType, &status, stats, err)
 }
@@ -476,30 +503,53 @@ func (c *Client) startStatsCollection() {
 }
 
 func (c *Client) updateStats() {
+	c.logTrace("updateStats() starting")
 	c.mu.RLock()
 	wg := c.wgBackend
+	state := c.state
 	c.mu.RUnlock()
 
-	if wg == nil {
+	// Don't update stats if not connected or no backend
+	if wg == nil || state != StateConnected {
+		c.logTrace("updateStats() skipped - not connected or no backend")
 		return
 	}
 
+	c.logTrace("updateStats() calling wg.GetStats()")
 	stats, err := wg.GetStats()
 	if err != nil {
+		c.logTrace("updateStats() wg.GetStats() error: %v", err)
 		return
 	}
+	c.logTrace("updateStats() wg.GetStats() returned successfully")
 
-	c.mu.Lock()
-	c.stats = Stats{
-		RxBytes: stats.RxBytes,
-		TxBytes: stats.TxBytes,
-		RxSpeed: stats.RxSpeed,
-		TxSpeed: stats.TxSpeed,
+	// Use TryLock to avoid blocking other readers if lock is contested
+	c.logTrace("updateStats() trying to acquire Lock")
+	if !c.mu.TryLock() {
+		// Lock is held, skip this update
+		c.logTrace("updateStats() TryLock failed, skipping")
+		return
+	}
+	c.logTrace("updateStats() acquired Lock")
+
+	stillConnected := c.state == StateConnected
+	if stillConnected {
+		c.stats = Stats{
+			RxBytes: stats.RxBytes,
+			TxBytes: stats.TxBytes,
+			RxSpeed: stats.RxSpeed,
+			TxSpeed: stats.TxSpeed,
+		}
 	}
 	statsCopy := c.stats
 	c.mu.Unlock()
+	c.logTrace("updateStats() released Lock")
 
-	c.emitEvent(EventStatsUpdated, &statsCopy, nil)
+	// Only emit event if still connected
+	if stillConnected {
+		c.emitEvent(EventStatsUpdated, &statsCopy, nil)
+	}
+	c.logTrace("updateStats() done")
 }
 
 func (c *Client) connectionMonitor(config ConnectConfig) {
@@ -684,8 +734,20 @@ func (c *Client) saveRouteSettings() error {
 }
 
 func (c *Client) log(format string, args ...interface{}) {
-	if c.options.Logger != nil {
+	if c.options.Logger != nil && c.options.LogLevel >= LogLevelInfo {
 		c.options.Logger("[WireSocket] "+format, args...)
+	}
+}
+
+func (c *Client) logDebug(format string, args ...interface{}) {
+	if c.options.Logger != nil && c.options.LogLevel >= LogLevelDebug {
+		c.options.Logger("[WireSocket] DEBUG: "+format, args...)
+	}
+}
+
+func (c *Client) logTrace(format string, args ...interface{}) {
+	if c.options.Logger != nil && c.options.LogLevel >= LogLevelTrace {
+		c.options.Logger("[WireSocket] TRACE: "+format, args...)
 	}
 }
 

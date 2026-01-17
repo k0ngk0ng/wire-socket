@@ -179,7 +179,7 @@ func runCLIConnect(server, username, password string, daemon bool) error {
 	// Create SDK client directly for CLI mode
 	client, err := sdk.New(sdk.Options{
 		StatsInterval: 60 * time.Second,
-		Debug:         false,
+		LogLevel:      sdk.LogLevelInfo,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create SDK client: %w", err)

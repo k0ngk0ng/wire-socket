@@ -135,6 +135,20 @@ type Event struct {
 // EventHandler is a callback function for handling events
 type EventHandler func(event Event)
 
+// LogLevel represents the logging verbosity level
+type LogLevel int
+
+const (
+	// LogLevelError only logs errors
+	LogLevelError LogLevel = iota
+	// LogLevelInfo logs info and errors (default)
+	LogLevelInfo
+	// LogLevelDebug logs debug, info and errors
+	LogLevelDebug
+	// LogLevelTrace logs everything including trace messages
+	LogLevelTrace
+)
+
 // Options contains SDK configuration options
 type Options struct {
 	// ConfigDir is the directory for storing configuration files
@@ -149,15 +163,16 @@ type Options struct {
 	// Default: log.Printf
 	Logger func(format string, args ...interface{})
 
-	// Debug enables debug logging
-	Debug bool
+	// LogLevel controls logging verbosity
+	// Default: LogLevelInfo
+	LogLevel LogLevel
 }
 
 // DefaultOptions returns default SDK options
 func DefaultOptions() Options {
 	return Options{
 		StatsInterval: 3 * time.Second,
-		Debug:         false,
+		LogLevel:      LogLevelInfo,
 	}
 }
 

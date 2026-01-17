@@ -198,7 +198,7 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 	u.mu.RUnlock()
 
 	if dev == nil {
-		return Stats{}, fmt.Errorf("device not initialized")
+		return lastStats, nil // Return cached stats if device is gone
 	}
 
 	// Call IpcGet with timeout to avoid blocking forever
@@ -216,7 +216,8 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 	select {
 	case result := <-resultChan:
 		if result.err != nil {
-			return Stats{}, fmt.Errorf("failed to get device stats: %w", result.err)
+			// Device might be closing, return cached stats
+			return lastStats, nil
 		}
 		ipcOutput = result.output
 	case <-time.After(2 * time.Second):
@@ -234,10 +235,32 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 		}
 	}
 
-	// Update cached stats under lock
-	u.mu.Lock()
-	defer u.mu.Unlock()
+	// Try to update cached stats, but don't block if Close() is running
+	if u.mu.TryLock() {
+		now := time.Now()
+		elapsed := now.Sub(lastUpdate).Seconds()
 
+		var rxSpeed, txSpeed uint64
+		if elapsed > 0 && lastUpdate != (time.Time{}) {
+			rxSpeed = uint64(float64(totalRx-lastStats.RxBytes) / elapsed)
+			txSpeed = uint64(float64(totalTx-lastStats.TxBytes) / elapsed)
+		}
+
+		stats := Stats{
+			RxBytes: totalRx,
+			TxBytes: totalTx,
+			RxSpeed: rxSpeed,
+			TxSpeed: txSpeed,
+		}
+
+		u.lastStats = stats
+		u.lastUpdate = now
+		u.mu.Unlock()
+
+		return stats, nil
+	}
+
+	// Couldn't acquire lock, return what we computed without caching
 	now := time.Now()
 	elapsed := now.Sub(lastUpdate).Seconds()
 
@@ -247,17 +270,12 @@ func (u *UserspaceBackend) GetStats() (Stats, error) {
 		txSpeed = uint64(float64(totalTx-lastStats.TxBytes) / elapsed)
 	}
 
-	stats := Stats{
+	return Stats{
 		RxBytes: totalRx,
 		TxBytes: totalTx,
 		RxSpeed: rxSpeed,
 		TxSpeed: txSpeed,
-	}
-
-	u.lastStats = stats
-	u.lastUpdate = now
-
-	return stats, nil
+	}, nil
 }
 
 // GetPeerStats returns statistics for all peers
