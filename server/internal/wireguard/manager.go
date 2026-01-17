@@ -33,6 +33,9 @@ type Manager struct {
 	privateKey string
 	address    string
 	listenPort int
+
+	// Track peer AllowedIPs (not available from GetPeerStats)
+	peerAllowedIPs map[string][]string // publicKey -> allowedIPs
 }
 
 // ManagerConfig configures the WireGuard manager
@@ -87,10 +90,11 @@ func NewManagerWithConfig(cfg ManagerConfig) (*Manager, error) {
 	}
 
 	return &Manager{
-		backend:    backend,
-		mode:       mode,
-		deviceName: deviceName,
-		configPath: configPath,
+		backend:        backend,
+		mode:           mode,
+		deviceName:     deviceName,
+		configPath:     configPath,
+		peerAllowedIPs: make(map[string][]string),
 	}, nil
 }
 
@@ -137,6 +141,9 @@ func (m *Manager) AddPeer(publicKey, allowedIP string) error {
 		return fmt.Errorf("failed to add peer: %w", err)
 	}
 
+	// Track AllowedIPs for config file persistence
+	m.peerAllowedIPs[publicKey] = []string{allowedIP}
+
 	// Persist to config file
 	if m.privateKey != "" {
 		if err := m.SaveConfigFile(m.privateKey, m.address, m.listenPort); err != nil {
@@ -153,6 +160,9 @@ func (m *Manager) RemovePeer(publicKey string) error {
 	if err := m.backend.RemovePeer(publicKey); err != nil {
 		return fmt.Errorf("failed to remove peer: %w", err)
 	}
+
+	// Remove from tracking
+	delete(m.peerAllowedIPs, publicKey)
 
 	// Persist to config file
 	if m.privateKey != "" {
@@ -296,11 +306,6 @@ func (m *Manager) LoadConfigFile() (*ServerConfig, error) {
 
 // SaveConfigFile writes the current WireGuard configuration to the config file
 func (m *Manager) SaveConfigFile(privateKey string, address string, listenPort int) error {
-	peerStats, err := m.backend.GetPeerStats()
-	if err != nil {
-		return fmt.Errorf("failed to get device config: %w", err)
-	}
-
 	// Ensure directory exists
 	dir := filepath.Dir(m.configPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -316,12 +321,13 @@ func (m *Manager) SaveConfigFile(privateKey string, address string, listenPort i
 	}
 	sb.WriteString(fmt.Sprintf("ListenPort = %d\n", listenPort))
 
-	// Write peers
-	for _, peer := range peerStats {
+	// Write peers from our tracked AllowedIPs
+	for publicKey, allowedIPs := range m.peerAllowedIPs {
 		sb.WriteString("\n[Peer]\n")
-		sb.WriteString(fmt.Sprintf("PublicKey = %s\n", peer.PublicKey))
-		// We don't have AllowedIPs from stats, so we'll skip for now
-		// In a real implementation, we'd track this separately
+		sb.WriteString(fmt.Sprintf("PublicKey = %s\n", publicKey))
+		if len(allowedIPs) > 0 {
+			sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n", strings.Join(allowedIPs, ", ")))
+		}
 	}
 
 	// Write to file with restricted permissions
