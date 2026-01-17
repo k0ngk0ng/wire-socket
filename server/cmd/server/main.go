@@ -220,7 +220,7 @@ func main() {
 	}
 
 	// Save initial config (creates file if not exists)
-	if err := wgManager.SaveConfigFile(privateKey, config.WireGuard.Subnet, config.WireGuard.ListenPort); err != nil {
+	if err := wgManager.SaveConfigFile(privateKey, serverAddr, config.WireGuard.ListenPort); err != nil {
 		log.Printf("Warning: failed to save initial config: %v", err)
 	} else {
 		log.Printf("WireGuard config persisted to %s", wgManager.GetConfigPath())

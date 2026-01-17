@@ -50,10 +50,20 @@ func (g *ConfigGenerator) GenerateForUser(userID uint, serverID uint) (*WGConfig
 		return nil, fmt.Errorf("failed to get server: %w", err)
 	}
 
+	// Check if user already has an allocated IP with a different public key
+	var existing database.AllocatedIP
+	hasExisting := g.db.Where("user_id = ? AND server_id = ?", userID, serverID).First(&existing).Error == nil
+
 	// Generate or retrieve user's key pair
 	privateKey, publicKey, err := g.getUserKeys(userID, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user keys: %w", err)
+	}
+
+	// If user has existing allocation with different public key, remove the old peer first
+	if hasExisting && existing.PublicKey != "" && existing.PublicKey != publicKey {
+		// Remove old peer from WireGuard (ignore error - peer might not exist)
+		_ = g.wgManager.RemovePeer(existing.PublicKey)
 	}
 
 	// Allocate IP from server's subnet
