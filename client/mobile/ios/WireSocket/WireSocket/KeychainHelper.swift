@@ -7,6 +7,7 @@ class KeychainHelper {
 
     private init() {}
 
+    @discardableResult
     func save(password: String, for account: String) -> Bool {
         guard let data = password.data(using: .utf8) else { return false }
 
