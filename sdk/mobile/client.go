@@ -186,6 +186,98 @@ func (c *Client) SetExcludedRoutes(routesJSON string) error {
 	return c.inner.SetExcludedRoutes(routes)
 }
 
+// ======== SSO Methods ========
+
+// GetAuthProviders fetches available authentication providers from the server.
+// Returns JSON array: [{"id":"local","type":"local","name":"Local Account"},{"id":"azure-ad","type":"oidc","name":"Microsoft"}]
+func (c *Client) GetAuthProviders(server string) (string, error) {
+	providers, err := c.inner.GetAuthProviders(server)
+	if err != nil {
+		return "", err
+	}
+
+	data, err := json.Marshal(providers)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal providers: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// GetSSOProviders fetches only SSO providers (excludes local) from the server.
+// Returns JSON array of SSO providers.
+func (c *Client) GetSSOProviders(server string) (string, error) {
+	providers, err := c.inner.GetAuthProviders(server)
+	if err != nil {
+		return "", err
+	}
+
+	ssoProviders := sdk.FilterSSOProviders(providers)
+	data, err := json.Marshal(ssoProviders)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal providers: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// HasSSOProviders checks if the server has any SSO providers configured.
+func (c *Client) HasSSOProviders(server string) (bool, error) {
+	providers, err := c.inner.GetAuthProviders(server)
+	if err != nil {
+		return false, err
+	}
+	return sdk.HasSSOProviders(providers), nil
+}
+
+// GetSSOAuthURL generates the SSO authorization URL.
+// The user should be redirected to this URL in a browser to complete SSO login.
+// server: VPN server address
+// providerID: SSO provider ID (e.g., "azure-ad", "google")
+// redirectURI: callback URI after login (e.g., "wiresocket://auth/callback")
+// Returns: authorization URL that should be opened in browser
+func (c *Client) GetSSOAuthURL(server, providerID, redirectURI string) (string, error) {
+	config := sdk.SSOConfig{
+		Server:      server,
+		ProviderID:  providerID,
+		RedirectURI: redirectURI,
+	}
+	return c.inner.GetSSOAuthURL(config)
+}
+
+// ParseSSOCallback parses the SSO callback URL and returns the result as JSON.
+// callbackURL: the callback URL received from the IdP (e.g., "wiresocket://auth/callback?token=xxx&state=yyy")
+// Returns JSON: {"token":"xxx","state":"yyy","error":""}
+func (c *Client) ParseSSOCallback(callbackURL string) (string, error) {
+	result, err := c.inner.ParseSSOCallback(callbackURL)
+
+	response := ssoResultJSON{
+		State: result.State,
+	}
+
+	if err != nil {
+		response.Error = err.Error()
+	} else {
+		response.Token = result.Token
+	}
+
+	data, _ := json.Marshal(response)
+	return string(data), err
+}
+
+// ConnectWithToken initiates a VPN connection using an SSO token.
+// server: VPN server address
+// token: JWT token obtained from SSO callback
+// autoReconnect: whether to automatically reconnect on connection loss
+func (c *Client) ConnectWithToken(server, token string, autoReconnect bool) error {
+	config := sdk.DefaultConnectConfig()
+	config.Server = server
+	config.Token = token
+	config.AutoReconnect = autoReconnect
+
+	return c.inner.Connect(config)
+}
+
 // Close releases all resources.
 func (c *Client) Close() error {
 	return c.inner.Close()
@@ -263,4 +355,10 @@ type eventJSON struct {
 	Status      *statusJSON `json:"status,omitempty"`
 	Stats       *statsJSON  `json:"stats,omitempty"`
 	Error       string      `json:"error,omitempty"`
+}
+
+type ssoResultJSON struct {
+	Token string `json:"token,omitempty"`
+	State string `json:"state,omitempty"`
+	Error string `json:"error,omitempty"`
 }
