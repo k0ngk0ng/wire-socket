@@ -8,6 +8,7 @@ iOS VPN client for WireSocket using the Go SDK and SwiftUI.
 - iOS 16.0+ deployment target
 - Go 1.21+
 - gomobile (`go install golang.org/x/mobile/cmd/gomobile@latest`)
+- **Paid Apple Developer Account ($99/year)** - Required for Network Extension (VPN) entitlement
 
 ## Project Structure
 
@@ -22,7 +23,7 @@ ios/
 │   │   ├── Assets.xcassets/       # App icons and colors
 │   │   └── Info.plist
 │   └── Frameworks/
-│       └── Mobile.xcframework     # Go SDK (generated)
+│       └── WireSocketSDK.xcframework  # Go SDK (generated)
 ├── build.sh                       # Build script
 └── README.md
 ```
@@ -43,8 +44,9 @@ This will:
 
 1. Build the Go SDK:
 ```bash
-cd ../../../sdk
-gomobile bind -target=ios -o ../client/mobile/ios/WireSocket/Frameworks/Mobile.xcframework ./mobile
+cd ../../../sdk/mobile
+gomobile bind -v -target=ios -o WireSocketSDK.xcframework .
+cp -r WireSocketSDK.xcframework ../../client/mobile/ios/WireSocket/Frameworks/
 ```
 
 2. Open in Xcode:
@@ -64,7 +66,7 @@ open WireSocket/WireSocket.xcodeproj
 │           VPNManager                │
 │   (ObservableObject + Combine)      │
 ├─────────────────────────────────────┤
-│      Mobile.xcframework             │
+│      WireSocketSDK.xcframework      │
 │   (Go SDK via gomobile bind)        │
 └─────────────────────────────────────┘
 ```
@@ -104,7 +106,7 @@ open WireSocket/WireSocket.xcodeproj
 │      PacketTunnelProvider           │
 │   (NEPacketTunnelProvider)          │
 ├─────────────────────────────────────┤
-│      Mobile.xcframework             │
+│      WireSocketSDK.xcframework      │
 │   (Go SDK via gomobile bind)        │
 └─────────────────────────────────────┘
 ```
@@ -119,5 +121,8 @@ open WireSocket/WireSocket.xcodeproj
 
 For device deployment:
 1. Open project in Xcode
-2. Select your development team in Signing & Capabilities
+2. Select your development team in Signing & Capabilities (requires paid Apple Developer account)
 3. Update bundle identifier if needed
+4. Select both **WireSocket** and **PacketTunnel** targets and set the same Team
+
+**Note:** Free Apple Developer accounts cannot use Network Extension entitlement. VPN apps require a paid account ($99/year).
