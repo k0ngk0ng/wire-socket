@@ -1,5 +1,5 @@
 import NetworkExtension
-import Mobile
+import WireSocketSDK
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
 

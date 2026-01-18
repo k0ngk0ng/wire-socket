@@ -1,7 +1,8 @@
 import Foundation
 import Combine
 import NetworkExtension
-import Mobile
+
+// Note: WireSocketSDK is used by the PacketTunnel extension, not the main app
 
 enum ConnectionState: String {
     case disconnected

@@ -1,0 +1,4 @@
+# Generated frameworks (build with gomobile bind)
+*.xcframework/
+*.aar
+*.jar
