@@ -43,15 +43,19 @@ npm run build:linux    # Linux package
 ### SDK (for mobile)
 
 ```bash
-cd sdk
+cd sdk/mobile
 go mod tidy
 
 # Build Android AAR
-gomobile bind -v -target=android -androidapi=24 -javapkg=com.wiresocket -o mobile.aar ./mobile
+gomobile bind -v -target=android -androidapi=24 -javapkg=com.wiresocket -o WireSocketSDK.aar .
 
 # Build iOS xcframework
-gomobile bind -v -target=ios -o Mobile.xcframework ./mobile
+gomobile bind -v -target=ios -o WireSocketSDK.xcframework .
+# Copy to iOS project:
+cp -r WireSocketSDK.xcframework ../../client/mobile/ios/WireSocket/Frameworks/
 ```
+
+**Note**: iOS VPN apps require a paid Apple Developer account ($99/year) because Network Extension entitlement is not available for free accounts.
 
 ## Running the System
 
