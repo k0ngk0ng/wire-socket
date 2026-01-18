@@ -81,6 +81,7 @@ struct ContentView: View {
             .onAppear {
                 server = vpnManager.savedServer
                 username = vpnManager.savedUsername
+                password = vpnManager.savedPassword
             }
         }
     }

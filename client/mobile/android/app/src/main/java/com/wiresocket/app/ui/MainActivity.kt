@@ -112,10 +112,11 @@ fun MainScreen(
     val vpnStatus by VpnStateHolder.status.collectAsStateWithLifecycle()
     val savedServer by settingsRepository.serverFlow.collectAsStateWithLifecycle(initialValue = "")
     val savedUsername by settingsRepository.usernameFlow.collectAsStateWithLifecycle(initialValue = "")
+    val savedPassword = remember { settingsRepository.getPassword() }
 
     var server by remember(savedServer) { mutableStateOf(savedServer) }
     var username by remember(savedUsername) { mutableStateOf(savedUsername) }
-    var password by remember { mutableStateOf("") }
+    var password by remember(savedPassword) { mutableStateOf(savedPassword) }
 
     val scope = rememberCoroutineScope()
     val isConnected = vpnStatus.state == ConnectionState.CONNECTED
@@ -187,7 +188,7 @@ fun MainScreen(
                         onDisconnect()
                     } else {
                         scope.launch {
-                            settingsRepository.saveCredentials(server, username)
+                            settingsRepository.saveCredentials(server, username, password)
                         }
                         onConnect(server, username, password)
                     }

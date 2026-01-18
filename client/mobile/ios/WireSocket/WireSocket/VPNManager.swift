@@ -29,6 +29,7 @@ class VPNManager: ObservableObject {
     @Published var status = VPNStatus()
     @Published var savedServer: String = ""
     @Published var savedUsername: String = ""
+    @Published var savedPassword: String = ""
 
     private var vpnManager: NETunnelProviderManager?
     private var statusObserver: NSObjectProtocol?
@@ -37,6 +38,7 @@ class VPNManager: ObservableObject {
     private let defaults = UserDefaults.standard
     private let serverKey = "saved_server"
     private let usernameKey = "saved_username"
+    private let passwordKeychainAccount = "vpn_password"
 
     // Bundle identifier for the Network Extension
     private let tunnelBundleId = "com.wiresocket.WireSocket.PacketTunnel"
@@ -57,13 +59,16 @@ class VPNManager: ObservableObject {
     private func loadSavedCredentials() {
         savedServer = defaults.string(forKey: serverKey) ?? ""
         savedUsername = defaults.string(forKey: usernameKey) ?? ""
+        savedPassword = KeychainHelper.shared.get(for: passwordKeychainAccount) ?? ""
     }
 
-    func saveCredentials(server: String, username: String) {
+    func saveCredentials(server: String, username: String, password: String) {
         defaults.set(server, forKey: serverKey)
         defaults.set(username, forKey: usernameKey)
+        KeychainHelper.shared.save(password: password, for: passwordKeychainAccount)
         savedServer = server
         savedUsername = username
+        savedPassword = password
     }
 
     private func loadVPNConfiguration() {
@@ -125,7 +130,7 @@ class VPNManager: ObservableObject {
         }
 
         status.state = .connecting
-        saveCredentials(server: server, username: username)
+        saveCredentials(server: server, username: username, password: password)
         status.server = server
 
         // Create or update VPN configuration
