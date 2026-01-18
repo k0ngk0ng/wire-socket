@@ -19,9 +19,15 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 ### Build
 
 ```bash
+# Desktop
 ./build.sh --all            # Build server + client
 ./build.sh --server         # Server only
 ./build.sh --client -p mac  # Client for macOS (or linux/win/all)
+
+# Mobile (requires gomobile)
+cd sdk/mobile
+gomobile bind -target=android -javapkg=com.wiresocket -o WireSocketSDK.aar .
+gomobile bind -target=ios -o WireSocketSDK.xcframework .
 ```
 
 ### Server
@@ -92,7 +98,6 @@ tunnel:
 
 See [docs/](docs/) for full documentation:
 
-- [CLAUDE.md](docs/CLAUDE.md) - Development guide for Claude Code
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture
 - [DEPLOY.md](docs/DEPLOY.md) - Server deployment (systemd, Docker)
 - [DOCKER.md](docs/DOCKER.md) - Docker deployment
@@ -104,7 +109,7 @@ See [docs/](docs/) for full documentation:
 - [Server](server/README.md) - VPN server with WireGuard
 - [Desktop Client](client/README.md) - Electron desktop app
 - [Android App](client/mobile/android/README.md) - Android VPN client
-- [iOS App](client/mobile/ios/README.md) - iOS VPN client
+- [iOS App](client/mobile/ios/README.md) - iOS VPN client (requires paid Apple Developer account)
 
 ## Security
 
