@@ -125,7 +125,7 @@ jobs:
           gomobile bind -v \
             -target=ios \
             -ldflags="-X github.com/k0ngk0ng/wire-socket/sdk/mobile.version=$VERSION" \
-            -o ../client/mobile/ios/WireSocket/Frameworks/Mobile.xcframework \
+            -o ../client/mobile/ios/WireSocket/Frameworks/WireSocketSDK.xcframework \
             ./mobile
 
       - name: Update iOS MARKETING_VERSION
