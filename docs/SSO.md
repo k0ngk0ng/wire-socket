@@ -734,3 +734,222 @@ providers:
   allowed_orgs: ["your-org"]
   orgs_url: "https://api.github.com/user/orgs"
 ```
+
+### Google Workspace
+
+1. 在 [Google Cloud Console](https://console.cloud.google.com) 创建项目
+2. 启用 "Google+ API" 或 "People API"
+3. 配置 OAuth 同意屏幕
+4. 创建 OAuth 2.0 凭据，配置重定向 URI: `https://vpn.example.com/api/auth/callback/google`
+
+```yaml
+- id: "google"
+  type: "oidc"
+  name: "Google"
+  enabled: true
+  issuer: "https://accounts.google.com"
+  client_id: "xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+  client_secret: "GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx"
+  scopes: ["openid", "profile", "email"]
+  mapping:
+    username: "email"
+    email: "email"
+  # 限制只允许公司域名的用户
+  allowed_domains:
+    - "yourcompany.com"
+```
+
+### Keycloak
+
+1. 在 Keycloak Admin Console 创建 Client
+2. 设置 Access Type 为 "confidential"
+3. 配置 Valid Redirect URIs: `https://vpn.example.com/api/auth/callback/keycloak`
+4. 在 Credentials 标签页获取 Secret
+
+```yaml
+- id: "keycloak"
+  type: "oidc"
+  name: "Keycloak"
+  enabled: true
+  # 替换为你的 Keycloak 地址和 Realm 名称
+  issuer: "https://keycloak.example.com/realms/your-realm"
+  client_id: "wiresocket-vpn"
+  client_secret: "your-client-secret"
+  scopes: ["openid", "profile", "email", "roles"]
+  mapping:
+    username: "preferred_username"
+    email: "email"
+    # Keycloak 的角色通常在 realm_access.roles 或 resource_access 中
+    admin_claim: "realm_access.roles"
+    admin_values:
+      - "vpn-admin"
+      - "realm-admin"
+```
+
+**Keycloak 高级配置 - 使用 Client Scope 传递组信息**：
+
+1. 创建 Client Scope "groups"
+2. 添加 Mapper: Type = "Group Membership", Token Claim Name = "groups"
+3. 将 Client Scope 添加到 Client
+
+```yaml
+- id: "keycloak"
+  type: "oidc"
+  name: "Keycloak (with groups)"
+  enabled: true
+  issuer: "https://keycloak.example.com/realms/your-realm"
+  client_id: "wiresocket-vpn"
+  client_secret: "your-client-secret"
+  scopes: ["openid", "profile", "email", "groups"]
+  mapping:
+    username: "preferred_username"
+    email: "email"
+    admin_claim: "groups"
+    admin_values:
+      - "/VPN-Admins"  # Keycloak 组名通常带 "/" 前缀
+      - "/IT-Admins"
+```
+
+### GitLab (Self-hosted)
+
+1. 在 GitLab Admin Area > Applications 创建应用
+2. 配置 Redirect URI: `https://vpn.example.com/api/auth/callback/gitlab`
+3. 勾选 Scopes: `openid`, `profile`, `email`
+
+```yaml
+- id: "gitlab"
+  type: "oidc"
+  name: "GitLab"
+  enabled: true
+  # 自托管 GitLab
+  issuer: "https://gitlab.yourcompany.com"
+  # 或使用 GitLab.com
+  # issuer: "https://gitlab.com"
+  client_id: "your-application-id"
+  client_secret: "your-application-secret"
+  scopes: ["openid", "profile", "email"]
+  mapping:
+    username: "nickname"  # 或 "preferred_username"
+    email: "email"
+```
+
+### Auth0
+
+1. 在 Auth0 Dashboard 创建 Application (Regular Web Application)
+2. 配置 Allowed Callback URLs: `https://vpn.example.com/api/auth/callback/auth0`
+3. 在 Settings 中获取 Domain, Client ID, Client Secret
+
+```yaml
+- id: "auth0"
+  type: "oidc"
+  name: "Auth0"
+  enabled: true
+  # 替换 your-tenant 为你的 Auth0 租户名
+  issuer: "https://your-tenant.auth0.com"
+  client_id: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  client_secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  scopes: ["openid", "profile", "email"]
+  mapping:
+    username: "nickname"  # 或 "email"
+    email: "email"
+```
+
+---
+
+## 完整配置示例
+
+以下是一个包含多个 SSO Provider 的完整 config.yaml 示例：
+
+```yaml
+auth:
+  jwt_secret: "your-strong-jwt-secret-at-least-32-chars"
+  allow_registration: false
+
+  sso:
+    enabled: true
+    callback_base_url: "https://vpn.example.com"
+
+    providers:
+      # Azure AD - 企业用户
+      - id: "azure-ad"
+        type: "oidc"
+        name: "Microsoft 365"
+        enabled: true
+        issuer: "https://login.microsoftonline.com/your-tenant-id/v2.0"
+        client_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+        client_secret: "your-azure-client-secret"
+        scopes: ["openid", "profile", "email"]
+        mapping:
+          username: "preferred_username"
+          email: "email"
+          admin_claim: "groups"
+          admin_values: ["VPN-Admins"]
+        allowed_domains:
+          - "yourcompany.com"
+
+      # Keycloak - 内部用户
+      - id: "keycloak"
+        type: "oidc"
+        name: "Internal SSO"
+        enabled: true
+        issuer: "https://sso.internal.com/realms/corporate"
+        client_id: "wiresocket"
+        client_secret: "your-keycloak-secret"
+        scopes: ["openid", "profile", "email", "groups"]
+        mapping:
+          username: "preferred_username"
+          email: "email"
+          admin_claim: "groups"
+          admin_values: ["/IT-Admins", "/VPN-Admins"]
+
+      # GitHub - 开发者
+      - id: "github"
+        type: "oauth2"
+        name: "GitHub"
+        enabled: true
+        authorize_url: "https://github.com/login/oauth/authorize"
+        token_url: "https://github.com/login/oauth/access_token"
+        userinfo_url: "https://api.github.com/user"
+        client_id: "your-github-client-id"
+        client_secret: "your-github-client-secret"
+        scopes: ["user:email", "read:org"]
+        mapping:
+          username: "login"
+          email: "email"
+        allowed_orgs: ["your-org"]
+        orgs_url: "https://api.github.com/user/orgs"
+```
+
+---
+
+## 故障排查
+
+### 常见问题
+
+**1. "discovery endpoint returned 404"**
+- 检查 `issuer` URL 是否正确
+- 确保 URL 末尾没有多余的斜杠
+- 验证 OIDC Discovery: `curl {issuer}/.well-known/openid-configuration`
+
+**2. "invalid_client" 或 "unauthorized_client"**
+- 检查 `client_id` 和 `client_secret` 是否正确
+- 确认 Redirect URI 配置匹配
+
+**3. "email domain not allowed"**
+- 用户的邮箱域名不在 `allowed_domains` 列表中
+
+**4. "user is not a member of allowed organizations"**
+- 用户不在 `allowed_orgs` 指定的组织中（GitHub/GitLab）
+
+**5. SSO 登录后显示 "account is inactive"**
+- 管理员在 WireSocket 中禁用了该用户
+- 使用管理员账户重新激活用户
+
+### 调试模式
+
+启用 debug 日志查看详细信息：
+
+```yaml
+server:
+  log_level: "debug"
+```

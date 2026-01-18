@@ -10,14 +10,19 @@ import (
 
 // User represents a VPN user
 type User struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	Username     string    `gorm:"column:username;unique;not null" json:"username"`
-	Email        string    `gorm:"column:email;unique;not null" json:"email"`
-	PasswordHash string    `gorm:"column:password_hash;not null" json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	IsActive     bool      `gorm:"column:is_active;default:true" json:"is_active"`
-	IsAdmin      bool      `gorm:"column:is_admin;default:false" json:"is_admin"`
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	Username     string     `gorm:"column:username;unique;not null" json:"username"`
+	Email        string     `gorm:"column:email;unique;not null" json:"email"`
+	PasswordHash string     `gorm:"column:password_hash" json:"-"` // Empty for SSO users
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	IsActive     bool       `gorm:"column:is_active;default:true" json:"is_active"`
+	IsAdmin      bool       `gorm:"column:is_admin;default:false" json:"is_admin"`
+
+	// SSO fields
+	AuthProvider string     `gorm:"column:auth_provider;default:local" json:"auth_provider"` // local, oidc, oauth2
+	ExternalID   string     `gorm:"column:external_id" json:"-"`                             // User ID from IdP
+	LastLogin    *time.Time `gorm:"column:last_login" json:"last_login,omitempty"`
 }
 
 // Server represents a VPN server configuration

@@ -83,8 +83,34 @@ type Config struct {
 		Routes     []string `yaml:"routes"` // Routes to push to clients
 	} `yaml:"wireguard"`
 	Auth struct {
-		JWTSecret           string `yaml:"jwt_secret"`
-		AllowRegistration   bool   `yaml:"allow_registration"` // Default: false (disabled)
+		JWTSecret         string `yaml:"jwt_secret"`
+		AllowRegistration bool   `yaml:"allow_registration"` // Default: false (disabled)
+		SSO               *struct {
+			Enabled         bool `yaml:"enabled"`
+			CallbackBaseURL string `yaml:"callback_base_url"`
+			Providers       []struct {
+				ID            string   `yaml:"id"`
+				Type          string   `yaml:"type"`
+				Name          string   `yaml:"name"`
+				Enabled       bool     `yaml:"enabled"`
+				Issuer        string   `yaml:"issuer"`
+				AuthorizeURL  string   `yaml:"authorize_url"`
+				TokenURL      string   `yaml:"token_url"`
+				UserinfoURL   string   `yaml:"userinfo_url"`
+				ClientID      string   `yaml:"client_id"`
+				ClientSecret  string   `yaml:"client_secret"`
+				Scopes        []string `yaml:"scopes"`
+				Mapping       struct {
+					Username    string   `yaml:"username"`
+					Email       string   `yaml:"email"`
+					AdminClaim  string   `yaml:"admin_claim"`
+					AdminValues []string `yaml:"admin_values"`
+				} `yaml:"mapping"`
+				AllowedDomains []string `yaml:"allowed_domains"`
+				AllowedOrgs    []string `yaml:"allowed_orgs"`
+				OrgsURL        string   `yaml:"orgs_url"`
+			} `yaml:"providers"`
+		} `yaml:"sso"`
 	} `yaml:"auth"`
 	Tunnel struct {
 		Enabled    bool   `yaml:"enabled"`
@@ -244,27 +270,9 @@ func main() {
 	// Initialize config generator
 	configGen := wireguard.NewConfigGenerator(db, wgManager)
 
-	// Initialize auth handler
-	authHandler := auth.NewHandler(db, config.Auth.JWTSecret, config.Auth.AllowRegistration)
+	// Initialize auth - use SSO if configured, otherwise use legacy handler
+	var apiRouter *api.Router
 
-	// Set up Gin router
-	engine := gin.Default()
-
-	// Enable CORS
-	engine.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
-
-	// Set up API routes
 	// Build tunnel URL from public_host and path
 	tunnelURL := ""
 	if config.Tunnel.PublicHost != "" {
@@ -285,7 +293,37 @@ func main() {
 	// Initialize admin handler
 	adminHandler := api.NewAdminHandler(db, natManager, config.WireGuard.DeviceName)
 
-	apiRouter := api.NewRouter(authHandler, adminHandler, db, configGen, tunnelURL, config.WireGuard.Subnet)
+	if config.Auth.SSO != nil && config.Auth.SSO.Enabled {
+		// Use new SSO-based authentication
+		ssoConfig := convertToSSOConfig(config)
+		authManager := auth.NewManager(db, config.Auth.JWTSecret, ssoConfig)
+		ssoHandler := api.NewSSOHandler(authManager, db, configGen, tunnelURL, config.WireGuard.Subnet)
+		apiRouter = api.NewRouterWithSSO(ssoHandler, adminHandler, db, configGen, tunnelURL, config.WireGuard.Subnet)
+		log.Printf("SSO authentication enabled with %d providers", len(ssoConfig.Providers))
+	} else {
+		// Use legacy authentication handler
+		authHandler := auth.NewHandler(db, config.Auth.JWTSecret, config.Auth.AllowRegistration)
+		apiRouter = api.NewRouter(authHandler, adminHandler, db, configGen, tunnelURL, config.WireGuard.Subnet)
+		log.Println("Using local authentication (SSO disabled)")
+	}
+
+	// Set up Gin router
+	engine := gin.Default()
+
+	// Enable CORS
+	engine.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
 	apiRouter.SetupRoutes(engine)
 
 	// Setup admin UI routes
@@ -532,4 +570,45 @@ func loadNATConfig(db *database.DB, config *Config) nat.Config {
 	}
 
 	return natConfig
+}
+
+// convertToSSOConfig converts the config file SSO settings to auth.SSOConfig
+func convertToSSOConfig(config *Config) *auth.SSOConfig {
+	if config.Auth.SSO == nil {
+		return nil
+	}
+
+	ssoConfig := &auth.SSOConfig{
+		Enabled:         config.Auth.SSO.Enabled,
+		CallbackBaseURL: config.Auth.SSO.CallbackBaseURL,
+		Providers:       make([]auth.ProviderConfig, 0, len(config.Auth.SSO.Providers)),
+	}
+
+	for _, p := range config.Auth.SSO.Providers {
+		provider := auth.ProviderConfig{
+			ID:             p.ID,
+			Type:           auth.ProviderType(p.Type),
+			Name:           p.Name,
+			Enabled:        p.Enabled,
+			Issuer:         p.Issuer,
+			AuthorizeURL:   p.AuthorizeURL,
+			TokenURL:       p.TokenURL,
+			UserinfoURL:    p.UserinfoURL,
+			ClientID:       p.ClientID,
+			ClientSecret:   p.ClientSecret,
+			Scopes:         p.Scopes,
+			AllowedDomains: p.AllowedDomains,
+			AllowedOrgs:    p.AllowedOrgs,
+			OrgsURL:        p.OrgsURL,
+			Mapping: auth.UserMapping{
+				Username:    p.Mapping.Username,
+				Email:       p.Mapping.Email,
+				AdminClaim:  p.Mapping.AdminClaim,
+				AdminValues: p.Mapping.AdminValues,
+			},
+		}
+		ssoConfig.Providers = append(ssoConfig.Providers, provider)
+	}
+
+	return ssoConfig
 }

@@ -12,7 +12,8 @@ import (
 
 // Router sets up the API routes
 type Router struct {
-	authHandler  *auth.Handler
+	authHandler  *auth.Handler // Legacy handler (kept for compatibility)
+	ssoHandler   *SSOHandler   // New SSO handler
 	adminHandler *AdminHandler
 	db           *database.DB
 	configGen    *wireguard.ConfigGenerator
@@ -20,10 +21,22 @@ type Router struct {
 	subnet       string // VPN subnet (automatically included in routes)
 }
 
-// NewRouter creates a new API router
+// NewRouter creates a new API router (legacy, for backward compatibility)
 func NewRouter(authHandler *auth.Handler, adminHandler *AdminHandler, db *database.DB, configGen *wireguard.ConfigGenerator, tunnelURL string, subnet string) *Router {
 	return &Router{
 		authHandler:  authHandler,
+		adminHandler: adminHandler,
+		db:           db,
+		configGen:    configGen,
+		tunnelURL:    tunnelURL,
+		subnet:       subnet,
+	}
+}
+
+// NewRouterWithSSO creates a new API router with SSO support
+func NewRouterWithSSO(ssoHandler *SSOHandler, adminHandler *AdminHandler, db *database.DB, configGen *wireguard.ConfigGenerator, tunnelURL string, subnet string) *Router {
+	return &Router{
+		ssoHandler:   ssoHandler,
 		adminHandler: adminHandler,
 		db:           db,
 		configGen:    configGen,
@@ -41,64 +54,137 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 
 	// API v1 routes
 	v1 := engine.Group("/api")
+
+	// Use SSO handler if available, otherwise use legacy handler
+	if r.ssoHandler != nil {
+		r.setupSSORoutes(v1)
+	} else {
+		r.setupLegacyRoutes(v1)
+	}
+}
+
+// setupSSORoutes sets up routes using the new SSO handler
+func (r *Router) setupSSORoutes(v1 *gin.RouterGroup) {
+	// Public routes (no authentication required)
+	authGroup := v1.Group("/auth")
 	{
-		// Public routes (no authentication required)
-		auth := v1.Group("/auth")
-		{
-			auth.POST("/login", r.authHandler.Login)
-			auth.POST("/register", r.authHandler.Register)
-		}
+		authGroup.GET("/providers", r.ssoHandler.GetProviders)
+		authGroup.POST("/login", r.ssoHandler.Login)
 
-		// Protected routes (authentication required)
-		protected := v1.Group("")
-		protected.Use(r.authHandler.AuthMiddleware())
-		{
-			protected.POST("/auth/refresh", r.authHandler.RefreshToken)
-			protected.POST("/auth/change-password", r.authHandler.ChangePassword)
-			protected.GET("/config", r.GetConfig)
-			protected.GET("/servers", r.ListServers)
-			protected.GET("/status", r.GetStatus)
-		}
+		// SSO routes
+		authGroup.GET("/sso/:provider", r.ssoHandler.InitiateSSO)
+		authGroup.GET("/callback/:provider", r.ssoHandler.HandleCallback)
+	}
 
-		// Admin routes (requires authentication + admin privileges)
-		admin := v1.Group("/admin")
-		admin.Use(r.authHandler.AuthMiddleware())
-		admin.Use(r.authHandler.AdminMiddleware())
-		{
-			// User management
-			admin.GET("/users", r.adminHandler.ListUsers)
-			admin.POST("/users", r.authHandler.CreateUserByAdmin)
-			admin.GET("/users/:id", r.adminHandler.GetUser)
-			admin.PUT("/users/:id", r.adminHandler.UpdateUser)
-			admin.DELETE("/users/:id", r.adminHandler.DeleteUser)
+	// Protected routes (authentication required)
+	protected := v1.Group("")
+	protected.Use(r.ssoHandler.AuthMiddleware())
+	{
+		protected.GET("/auth/me", r.ssoHandler.GetCurrentUser)
+		protected.GET("/config", r.GetConfig)
+		protected.GET("/servers", r.ListServers)
+		protected.GET("/status", r.GetStatus)
+	}
 
-			// Route management
-			admin.GET("/routes", r.adminHandler.ListRoutes)
-			admin.POST("/routes", r.adminHandler.CreateRoute)
-			admin.PUT("/routes/:id", r.adminHandler.UpdateRoute)
-			admin.DELETE("/routes/:id", r.adminHandler.DeleteRoute)
-			admin.POST("/routes/apply", r.adminHandler.ApplyRoutes)
+	// Admin routes (requires authentication + admin privileges)
+	admin := v1.Group("/admin")
+	admin.Use(r.ssoHandler.AuthMiddleware())
+	admin.Use(r.ssoHandler.AdminMiddleware())
+	{
+		// User management
+		admin.GET("/users", r.adminHandler.ListUsers)
+		admin.POST("/users", r.adminHandler.CreateUser)
+		admin.GET("/users/:id", r.adminHandler.GetUser)
+		admin.PUT("/users/:id", r.adminHandler.UpdateUser)
+		admin.DELETE("/users/:id", r.adminHandler.DeleteUser)
 
-			// NAT rule management
-			admin.GET("/nat", r.adminHandler.ListNATRules)
-			admin.POST("/nat", r.adminHandler.CreateNATRule)
-			admin.PUT("/nat/:id", r.adminHandler.UpdateNATRule)
-			admin.DELETE("/nat/:id", r.adminHandler.DeleteNATRule)
-			admin.POST("/nat/apply", r.adminHandler.ApplyNATRules)
+		// Route management
+		admin.GET("/routes", r.adminHandler.ListRoutes)
+		admin.POST("/routes", r.adminHandler.CreateRoute)
+		admin.PUT("/routes/:id", r.adminHandler.UpdateRoute)
+		admin.DELETE("/routes/:id", r.adminHandler.DeleteRoute)
+		admin.POST("/routes/apply", r.adminHandler.ApplyRoutes)
 
-			// Group management
-			admin.GET("/groups", r.adminHandler.ListGroups)
-			admin.POST("/groups", r.adminHandler.CreateGroup)
-			admin.GET("/groups/:id", r.adminHandler.GetGroup)
-			admin.PUT("/groups/:id", r.adminHandler.UpdateGroup)
-			admin.DELETE("/groups/:id", r.adminHandler.DeleteGroup)
+		// NAT rule management
+		admin.GET("/nat", r.adminHandler.ListNATRules)
+		admin.POST("/nat", r.adminHandler.CreateNATRule)
+		admin.PUT("/nat/:id", r.adminHandler.UpdateNATRule)
+		admin.DELETE("/nat/:id", r.adminHandler.DeleteNATRule)
+		admin.POST("/nat/apply", r.adminHandler.ApplyNATRules)
 
-			// Group membership management
-			admin.POST("/groups/:id/users", r.adminHandler.AddUserToGroup)
-			admin.DELETE("/groups/:id/users/:user_id", r.adminHandler.RemoveUserFromGroup)
-			admin.POST("/groups/:id/routes", r.adminHandler.AddRouteToGroup)
-			admin.DELETE("/groups/:id/routes/:route_id", r.adminHandler.RemoveRouteFromGroup)
-		}
+		// Group management
+		admin.GET("/groups", r.adminHandler.ListGroups)
+		admin.POST("/groups", r.adminHandler.CreateGroup)
+		admin.GET("/groups/:id", r.adminHandler.GetGroup)
+		admin.PUT("/groups/:id", r.adminHandler.UpdateGroup)
+		admin.DELETE("/groups/:id", r.adminHandler.DeleteGroup)
+
+		// Group membership management
+		admin.POST("/groups/:id/users", r.adminHandler.AddUserToGroup)
+		admin.DELETE("/groups/:id/users/:user_id", r.adminHandler.RemoveUserFromGroup)
+		admin.POST("/groups/:id/routes", r.adminHandler.AddRouteToGroup)
+		admin.DELETE("/groups/:id/routes/:route_id", r.adminHandler.RemoveRouteFromGroup)
+	}
+}
+
+// setupLegacyRoutes sets up routes using the legacy auth handler (backward compatibility)
+func (r *Router) setupLegacyRoutes(v1 *gin.RouterGroup) {
+	// Public routes (no authentication required)
+	authGroup := v1.Group("/auth")
+	{
+		authGroup.POST("/login", r.authHandler.Login)
+		authGroup.POST("/register", r.authHandler.Register)
+	}
+
+	// Protected routes (authentication required)
+	protected := v1.Group("")
+	protected.Use(r.authHandler.AuthMiddleware())
+	{
+		protected.POST("/auth/refresh", r.authHandler.RefreshToken)
+		protected.POST("/auth/change-password", r.authHandler.ChangePassword)
+		protected.GET("/config", r.GetConfig)
+		protected.GET("/servers", r.ListServers)
+		protected.GET("/status", r.GetStatus)
+	}
+
+	// Admin routes (requires authentication + admin privileges)
+	admin := v1.Group("/admin")
+	admin.Use(r.authHandler.AuthMiddleware())
+	admin.Use(r.authHandler.AdminMiddleware())
+	{
+		// User management
+		admin.GET("/users", r.adminHandler.ListUsers)
+		admin.POST("/users", r.authHandler.CreateUserByAdmin)
+		admin.GET("/users/:id", r.adminHandler.GetUser)
+		admin.PUT("/users/:id", r.adminHandler.UpdateUser)
+		admin.DELETE("/users/:id", r.adminHandler.DeleteUser)
+
+		// Route management
+		admin.GET("/routes", r.adminHandler.ListRoutes)
+		admin.POST("/routes", r.adminHandler.CreateRoute)
+		admin.PUT("/routes/:id", r.adminHandler.UpdateRoute)
+		admin.DELETE("/routes/:id", r.adminHandler.DeleteRoute)
+		admin.POST("/routes/apply", r.adminHandler.ApplyRoutes)
+
+		// NAT rule management
+		admin.GET("/nat", r.adminHandler.ListNATRules)
+		admin.POST("/nat", r.adminHandler.CreateNATRule)
+		admin.PUT("/nat/:id", r.adminHandler.UpdateNATRule)
+		admin.DELETE("/nat/:id", r.adminHandler.DeleteNATRule)
+		admin.POST("/nat/apply", r.adminHandler.ApplyNATRules)
+
+		// Group management
+		admin.GET("/groups", r.adminHandler.ListGroups)
+		admin.POST("/groups", r.adminHandler.CreateGroup)
+		admin.GET("/groups/:id", r.adminHandler.GetGroup)
+		admin.PUT("/groups/:id", r.adminHandler.UpdateGroup)
+		admin.DELETE("/groups/:id", r.adminHandler.DeleteGroup)
+
+		// Group membership management
+		admin.POST("/groups/:id/users", r.adminHandler.AddUserToGroup)
+		admin.DELETE("/groups/:id/users/:user_id", r.adminHandler.RemoveUserFromGroup)
+		admin.POST("/groups/:id/routes", r.adminHandler.AddRouteToGroup)
+		admin.DELETE("/groups/:id/routes/:route_id", r.adminHandler.RemoveRouteFromGroup)
 	}
 }
 

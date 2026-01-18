@@ -46,6 +46,54 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"users": users})
 }
 
+// CreateUser creates a new user (admin endpoint)
+func (h *AdminHandler) CreateUser(c *gin.Context) {
+	var req struct {
+		Username string `json:"username" binding:"required"`
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required,min=8"`
+		IsAdmin  bool   `json:"is_admin"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: username, email, and password (min 8 chars) required"})
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+		return
+	}
+
+	// Create user
+	user := database.User{
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: string(hashedPassword),
+		AuthProvider: "local",
+		IsActive:     true,
+		IsAdmin:      req.IsAdmin,
+	}
+
+	if err := h.db.Create(&user).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "username or email already exists"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "user created successfully",
+		"user": gin.H{
+			"id":            user.ID,
+			"username":      user.Username,
+			"email":         user.Email,
+			"is_admin":      user.IsAdmin,
+			"auth_provider": user.AuthProvider,
+		},
+	})
+}
+
 // GetUser returns a specific user
 func (h *AdminHandler) GetUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
