@@ -10,10 +10,12 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 	"wire-socket-server/internal/admin"
 	"wire-socket-server/internal/api"
 	"wire-socket-server/internal/auth"
 	"wire-socket-server/internal/database"
+	"wire-socket-server/internal/mesh"
 	"wire-socket-server/internal/nat"
 	"wire-socket-server/internal/tunnel"
 	"wire-socket-server/internal/wireguard"
@@ -138,6 +140,19 @@ type Config struct {
 			ToDestination string `yaml:"to_destination"`
 		} `yaml:"dnat"`
 	} `yaml:"nat"`
+	Mesh struct {
+		Enabled      bool   `yaml:"enabled"`       // Enable Mesh networking
+		Name         string `yaml:"name"`          // Node name (unique in Mesh)
+		Role         string `yaml:"role"`          // gateway, exit, or both
+		MeshIP       string `yaml:"mesh_ip"`       // Mesh internal IP (10.254.0.x)
+		Token        string `yaml:"token"`         // Shared authentication token
+		SyncInterval int    `yaml:"sync_interval"` // Sync interval in seconds
+		Peers        []struct {
+			Name        string `yaml:"name"`
+			TunnelURL   string `yaml:"tunnel_url"`
+			APIEndpoint string `yaml:"api_endpoint"`
+		} `yaml:"peers"`
+	} `yaml:"mesh"`
 }
 
 func main() {
@@ -362,6 +377,49 @@ func main() {
 		log.Println("  wstunnel server wss://0.0.0.0:443 --restrict-to 127.0.0.1:51820")
 	}
 
+	// Initialize Mesh networking if enabled
+	var meshManager *mesh.Manager
+	if config.Mesh.Enabled {
+		syncInterval := time.Duration(config.Mesh.SyncInterval) * time.Second
+		if syncInterval == 0 {
+			syncInterval = 30 * time.Second
+		}
+
+		meshConfig := mesh.Config{
+			Enabled:      true,
+			Name:         config.Mesh.Name,
+			Role:         database.MeshNodeRole(config.Mesh.Role),
+			MeshIP:       config.Mesh.MeshIP,
+			Token:        config.Mesh.Token,
+			SyncInterval: syncInterval,
+			TunnelURL:    tunnelURL,
+		}
+
+		meshManager, err = mesh.NewManager(meshConfig, db, wgManager)
+		if err != nil {
+			log.Fatalf("Failed to initialize Mesh manager: %v", err)
+		}
+
+		// Create and register Mesh API handler
+		meshHandler := api.NewMeshHandler(meshManager, config.Mesh.Token)
+		apiRouter.SetMeshHandler(meshHandler)
+
+		// Start mesh manager (connects to peers, starts sync loop)
+		if err := meshManager.Start(); err != nil {
+			log.Printf("Warning: Mesh manager start failed: %v", err)
+		} else {
+			log.Printf("Mesh networking enabled (node: %s, role: %s, IP: %s)",
+				config.Mesh.Name, config.Mesh.Role, config.Mesh.MeshIP)
+		}
+
+		// Add initial peers from config
+		for _, p := range config.Mesh.Peers {
+			if _, err := meshManager.AddPeer(p.TunnelURL, p.APIEndpoint); err != nil {
+				log.Printf("Warning: Failed to add peer %s: %v", p.Name, err)
+			}
+		}
+	}
+
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -369,6 +427,9 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("\nShutting down...")
+		if meshManager != nil {
+			meshManager.Stop()
+		}
 		natManager.Cleanup()
 		if tunnelServer != nil {
 			tunnelServer.Stop()

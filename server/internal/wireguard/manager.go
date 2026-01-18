@@ -367,6 +367,86 @@ func (m *Manager) GetConfigPath() string {
 	return m.configPath
 }
 
+// GetDeviceName returns the WireGuard device name
+func (m *Manager) GetDeviceName() string {
+	return m.deviceName
+}
+
+// AddMeshPeer adds a Mesh peer with multiple allowed IPs and optional endpoint.
+// This is used for server-to-server Mesh connections.
+func (m *Manager) AddMeshPeer(publicKey string, meshIP string, allowedIPs []string, endpoint string) error {
+	// Ensure meshIP is in CIDR format
+	if !strings.Contains(meshIP, "/") {
+		meshIP = meshIP + "/32"
+	}
+
+	// Build full allowed IPs list
+	allAllowedIPs := []string{meshIP}
+	for _, ip := range allowedIPs {
+		if ip != meshIP && ip != strings.TrimSuffix(meshIP, "/32") {
+			allAllowedIPs = append(allAllowedIPs, ip)
+		}
+	}
+
+	peerCfg := wg.PeerConfig{
+		PublicKey:  publicKey,
+		AllowedIPs: allAllowedIPs,
+	}
+
+	// Set endpoint if provided
+	if endpoint != "" {
+		peerCfg.Endpoint = endpoint
+	}
+
+	// Mesh peers need keepalive to maintain NAT mappings
+	peerCfg.PersistentKeepalive = 25
+
+	err := m.backend.AddPeer(peerCfg)
+	if err != nil {
+		return fmt.Errorf("failed to add mesh peer: %w", err)
+	}
+
+	// Track AllowedIPs for config file persistence
+	m.peerAllowedIPs[publicKey] = allAllowedIPs
+
+	// Persist to config file
+	if m.privateKey != "" {
+		if err := m.SaveConfigFile(m.privateKey, m.address, m.listenPort); err != nil {
+			fmt.Printf("Warning: failed to persist config: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// UpdateMeshPeerAllowedIPs updates the allowed IPs for a Mesh peer
+func (m *Manager) UpdateMeshPeerAllowedIPs(publicKey string, allowedIPs []string) error {
+	// First, remove the existing peer
+	if err := m.backend.RemovePeer(publicKey); err != nil {
+		return fmt.Errorf("failed to remove peer for update: %w", err)
+	}
+
+	// Get stored endpoint if available
+	endpoint := ""
+
+	// Re-add with new allowed IPs
+	peerCfg := wg.PeerConfig{
+		PublicKey:            publicKey,
+		AllowedIPs:           allowedIPs,
+		Endpoint:             endpoint,
+		PersistentKeepalive:  25,
+	}
+
+	if err := m.backend.AddPeer(peerCfg); err != nil {
+		return fmt.Errorf("failed to re-add peer: %w", err)
+	}
+
+	// Update tracking
+	m.peerAllowedIPs[publicKey] = allowedIPs
+
+	return nil
+}
+
 // Helper function to parse allowed IPs
 func parseAllowedIPs(s string) ([]net.IPNet, error) {
 	var result []net.IPNet

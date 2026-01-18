@@ -164,7 +164,7 @@ func NewDB(dbPath string) (*DB, error) {
 	}
 
 	// Auto-migrate schemas
-	if err := db.AutoMigrate(&User{}, &Server{}, &AllocatedIP{}, &Session{}, &Route{}, &NATRule{}, &Group{}, &UserGroup{}, &RouteGroup{}); err != nil {
+	if err := db.AutoMigrate(&User{}, &Server{}, &AllocatedIP{}, &Session{}, &Route{}, &NATRule{}, &Group{}, &UserGroup{}, &RouteGroup{}, &MeshNode{}, &ExitRoute{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 

@@ -109,6 +109,8 @@ func runServerMode(config *Config, cmd string, args []string) {
 		handleNATCommand(db, config, args)
 	case "group", "groups":
 		handleGroupCommand(db, args)
+	case "mesh":
+		handleMeshCommand(db, args)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -2215,4 +2217,308 @@ func initTunnelDB(db *database.TunnelDB) {
 	}
 
 	fmt.Println("Database initialized successfully")
+}
+
+// ============ Mesh Commands ============
+
+func handleMeshCommand(db *database.DB, args []string) {
+	if len(args) == 0 {
+		args = []string{"status"}
+	}
+
+	switch args[0] {
+	case "status":
+		meshStatus(db)
+	case "peer", "peers":
+		handleMeshPeerCommand(db, args[1:])
+	case "exit-route", "exit-routes":
+		handleMeshExitRouteCommand(db, args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown mesh subcommand: %s\n", args[0])
+		printMeshUsage()
+		os.Exit(1)
+	}
+}
+
+func printMeshUsage() {
+	fmt.Println(`
+Mesh Commands:
+  mesh status                   Show mesh network status
+  mesh peer list                List mesh peers
+  mesh peer add                 Add a mesh peer (requires API)
+  mesh peer delete <id>         Delete a mesh peer
+  mesh exit-route list          List exit routes for local node
+  mesh exit-route add <cidr>    Add an exit route
+  mesh exit-route delete <id>   Delete an exit route`)
+}
+
+func meshStatus(db *database.DB) {
+	// Get local node
+	var localNode database.MeshNode
+	if err := db.Where("is_local = ?", true).First(&localNode).Error; err != nil {
+		fmt.Println("Mesh Status: Not initialized")
+		fmt.Println("\nTo enable Mesh, add mesh configuration to config.yaml and restart the server.")
+		return
+	}
+
+	fmt.Println("Mesh Status: Active")
+	fmt.Printf("\nLocal Node:\n")
+	fmt.Printf("  Name:       %s\n", localNode.Name)
+	fmt.Printf("  Mesh IP:    %s\n", localNode.MeshIP)
+	fmt.Printf("  Public Key: %s\n", localNode.PublicKey[:20]+"...")
+	if localNode.TunnelURL != "" {
+		fmt.Printf("  Tunnel URL: %s\n", localNode.TunnelURL)
+	}
+
+	// Get local exit routes
+	var localRoutes []database.ExitRoute
+	db.Where("node_id = ? AND enabled = ?", localNode.ID, true).Find(&localRoutes)
+	if len(localRoutes) > 0 {
+		fmt.Printf("\nLocal Exit Routes (%d):\n", len(localRoutes))
+		for _, r := range localRoutes {
+			comment := ""
+			if r.Comment != "" {
+				comment = " (" + r.Comment + ")"
+			}
+			fmt.Printf("  - %s%s\n", r.CIDR, comment)
+		}
+	}
+
+	// Get peers
+	var peers []database.MeshNode
+	db.Where("is_local = ?", false).Preload("ExitRoutes").Find(&peers)
+
+	if len(peers) > 0 {
+		fmt.Printf("\nPeers (%d):\n", len(peers))
+		for _, p := range peers {
+			status := "Offline"
+			if p.IsOnline {
+				status = "Online"
+			}
+			fmt.Printf("  %s (%s) - %s\n", p.Name, p.MeshIP, status)
+			if p.TunnelURL != "" {
+				fmt.Printf("    Tunnel URL: %s\n", p.TunnelURL)
+			}
+			if len(p.ExitRoutes) > 0 {
+				fmt.Printf("    Exit Routes: ")
+				for i, r := range p.ExitRoutes {
+					if i > 0 {
+						fmt.Print(", ")
+					}
+					fmt.Print(r.CIDR)
+				}
+				fmt.Println()
+			}
+		}
+	} else {
+		fmt.Println("\nPeers: (none)")
+	}
+
+	// Build routing table
+	fmt.Println("\nRouting Table:")
+	if len(peers) == 0 {
+		fmt.Println("  (empty)")
+	} else {
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "  CIDR\tVIA NODE\tVIA IP")
+		for _, p := range peers {
+			for _, r := range p.ExitRoutes {
+				if r.Enabled {
+					fmt.Fprintf(w, "  %s\t%s\t%s\n", r.CIDR, p.Name, p.MeshIP)
+				}
+			}
+		}
+		w.Flush()
+	}
+}
+
+func handleMeshPeerCommand(db *database.DB, args []string) {
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+
+	switch args[0] {
+	case "list", "ls":
+		listMeshPeers(db)
+	case "delete", "rm":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl mesh peer delete <id>")
+			os.Exit(1)
+		}
+		deleteMeshPeer(db, args[1])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown mesh peer subcommand: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func listMeshPeers(db *database.DB) {
+	var peers []database.MeshNode
+	if err := db.Where("is_local = ?", false).Preload("ExitRoutes").Order("id ASC").Find(&peers).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(peers) == 0 {
+		fmt.Println("No mesh peers configured")
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tNAME\tMESH_IP\tSTATUS\tEXIT_ROUTES")
+	for _, p := range peers {
+		status := "Offline"
+		if p.IsOnline {
+			status = "Online"
+		}
+		routes := "-"
+		if len(p.ExitRoutes) > 0 {
+			cidrs := make([]string, 0, len(p.ExitRoutes))
+			for _, r := range p.ExitRoutes {
+				cidrs = append(cidrs, r.CIDR)
+			}
+			routes = strings.Join(cidrs, ", ")
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", p.ID, p.Name, p.MeshIP, status, routes)
+	}
+	w.Flush()
+}
+
+func deleteMeshPeer(db *database.DB, idStr string) {
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid ID: %s\n", idStr)
+		os.Exit(1)
+	}
+
+	var peer database.MeshNode
+	if err := db.First(&peer, id).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Peer not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	if peer.IsLocal {
+		fmt.Fprintln(os.Stderr, "Cannot delete local node")
+		os.Exit(1)
+	}
+
+	// Delete exit routes first
+	db.Where("node_id = ?", peer.ID).Delete(&database.ExitRoute{})
+
+	if err := db.Delete(&peer).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error deleting peer: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Mesh peer deleted: %s (%s)\n", peer.Name, peer.MeshIP)
+}
+
+func handleMeshExitRouteCommand(db *database.DB, args []string) {
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+
+	switch args[0] {
+	case "list", "ls":
+		listMeshExitRoutes(db)
+	case "add", "create":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl mesh exit-route add <cidr> [--comment=<text>] [--priority=<num>]")
+			os.Exit(1)
+		}
+		addMeshExitRoute(db, args[1], args[2:])
+	case "delete", "rm":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: wsctl mesh exit-route delete <id>")
+			os.Exit(1)
+		}
+		deleteMeshExitRoute(db, args[1])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown mesh exit-route subcommand: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func listMeshExitRoutes(db *database.DB) {
+	// Get local node first
+	var localNode database.MeshNode
+	if err := db.Where("is_local = ?", true).First(&localNode).Error; err != nil {
+		fmt.Println("Mesh not initialized")
+		return
+	}
+
+	var routes []database.ExitRoute
+	if err := db.Where("node_id = ?", localNode.ID).Order("id ASC").Find(&routes).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(routes) == 0 {
+		fmt.Println("No exit routes configured for this node")
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tCIDR\tPRIORITY\tCOMMENT\tENABLED")
+	for _, r := range routes {
+		comment := r.Comment
+		if comment == "" {
+			comment = "-"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%v\n", r.ID, r.CIDR, r.Priority, comment, r.Enabled)
+	}
+	w.Flush()
+}
+
+func addMeshExitRoute(db *database.DB, cidr string, opts []string) {
+	// Get local node first
+	var localNode database.MeshNode
+	if err := db.Where("is_local = ?", true).First(&localNode).Error; err != nil {
+		fmt.Fprintln(os.Stderr, "Mesh not initialized")
+		os.Exit(1)
+	}
+
+	route := database.ExitRoute{
+		NodeID:   localNode.ID,
+		CIDR:     cidr,
+		Priority: 100,
+		Enabled:  true,
+	}
+
+	for _, opt := range opts {
+		if strings.HasPrefix(opt, "--comment=") {
+			route.Comment = strings.TrimPrefix(opt, "--comment=")
+		} else if strings.HasPrefix(opt, "--priority=") {
+			priority, _ := strconv.Atoi(strings.TrimPrefix(opt, "--priority="))
+			route.Priority = priority
+		}
+	}
+
+	if err := db.Create(&route).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating exit route: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Exit route created: ID=%d, CIDR=%s\n", route.ID, route.CIDR)
+}
+
+func deleteMeshExitRoute(db *database.DB, idStr string) {
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid ID: %s\n", idStr)
+		os.Exit(1)
+	}
+
+	var route database.ExitRoute
+	if err := db.First(&route, id).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Exit route not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := db.Delete(&route).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "Error deleting exit route: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Exit route deleted: ID=%d\n", route.ID)
 }

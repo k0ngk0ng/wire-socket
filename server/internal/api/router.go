@@ -15,6 +15,7 @@ type Router struct {
 	authHandler  *auth.Handler // Legacy handler (kept for compatibility)
 	ssoHandler   *SSOHandler   // New SSO handler
 	adminHandler *AdminHandler
+	meshHandler  *MeshHandler  // Mesh API handler
 	db           *database.DB
 	configGen    *wireguard.ConfigGenerator
 	tunnelURL    string
@@ -125,6 +126,9 @@ func (r *Router) setupSSORoutes(v1 *gin.RouterGroup) {
 		admin.POST("/groups/:id/routes", r.adminHandler.AddRouteToGroup)
 		admin.DELETE("/groups/:id/routes/:route_id", r.adminHandler.RemoveRouteFromGroup)
 	}
+
+	// Mesh routes (if mesh handler is configured)
+	r.setupMeshRoutes(v1, r.ssoHandler.AuthMiddleware(), r.ssoHandler.AdminMiddleware())
 }
 
 // setupLegacyRoutes sets up routes using the legacy auth handler (backward compatibility)
@@ -186,6 +190,54 @@ func (r *Router) setupLegacyRoutes(v1 *gin.RouterGroup) {
 		admin.POST("/groups/:id/routes", r.adminHandler.AddRouteToGroup)
 		admin.DELETE("/groups/:id/routes/:route_id", r.adminHandler.RemoveRouteFromGroup)
 	}
+
+	// Mesh routes (if mesh handler is configured)
+	r.setupMeshRoutes(v1, r.authHandler.AuthMiddleware(), r.authHandler.AdminMiddleware())
+}
+
+// setupMeshRoutes sets up Mesh-related API routes
+func (r *Router) setupMeshRoutes(v1 *gin.RouterGroup, authMiddleware, adminMiddleware gin.HandlerFunc) {
+	if r.meshHandler == nil {
+		return
+	}
+
+	meshGroup := v1.Group("/mesh")
+
+	// Public endpoint for mesh status (useful for monitoring)
+	meshGroup.GET("/status", r.meshHandler.GetStatus)
+
+	// Admin-only mesh management endpoints
+	meshAdmin := meshGroup.Group("")
+	meshAdmin.Use(authMiddleware)
+	meshAdmin.Use(adminMiddleware)
+	{
+		// Peer management
+		meshAdmin.GET("/peers", r.meshHandler.ListPeers)
+		meshAdmin.POST("/peers", r.meshHandler.AddPeer)
+		meshAdmin.DELETE("/peers/:id", r.meshHandler.RemovePeer)
+
+		// Exit route management
+		meshAdmin.GET("/exit-routes", r.meshHandler.ListExitRoutes)
+		meshAdmin.POST("/exit-routes", r.meshHandler.AddExitRoute)
+		meshAdmin.DELETE("/exit-routes/:id", r.meshHandler.DeleteExitRoute)
+
+		// Sync control
+		meshAdmin.POST("/sync", r.meshHandler.TriggerSync)
+	}
+
+	// Inter-node API (authenticated with Mesh Token)
+	meshInternal := meshGroup.Group("")
+	meshInternal.Use(r.meshHandler.MeshTokenMiddleware())
+	{
+		meshInternal.GET("/handshake", r.meshHandler.Handshake)
+		meshInternal.POST("/register", r.meshHandler.Register)
+		meshInternal.GET("/sync-data", r.meshHandler.GetSyncData)
+	}
+}
+
+// SetMeshHandler sets the Mesh API handler
+func (r *Router) SetMeshHandler(handler *MeshHandler) {
+	r.meshHandler = handler
 }
 
 // GetConfig returns WireGuard configuration for the authenticated user
@@ -212,11 +264,17 @@ func (r *Router) GetConfig(c *gin.Context) {
 		return
 	}
 
-	// Build routes: subnet + user-specific routes based on groups
+	// Build routes: subnet + user-specific routes based on groups + mesh routes
 	allRoutes := []string{r.subnet}
 	dbRoutes, err := r.adminHandler.GetRoutesForUser(userID.(uint))
 	if err == nil {
 		allRoutes = append(allRoutes, dbRoutes...)
+	}
+
+	// Add mesh routes if mesh handler is configured
+	if r.meshHandler != nil {
+		meshRoutes := r.meshHandler.GetMeshRoutes()
+		allRoutes = append(allRoutes, meshRoutes...)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
