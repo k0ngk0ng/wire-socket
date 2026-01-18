@@ -169,9 +169,16 @@ func (m *Manager) applyMasquerade(rule MasqueradeRule) error {
 
 // applySNAT applies a Source NAT rule
 func (m *Manager) applySNAT(rule SNATRule) error {
-	// iptables -t nat -A POSTROUTING -s 10.250.0.0/24 -d 192.168.250.0/24 -o wg0 -j SNAT --to-source 192.168.250.8
-	ruleStr := fmt.Sprintf("-t nat -A POSTROUTING -s %s -d %s -o %s -j SNAT --to-source %s",
-		rule.Source, rule.Destination, rule.Interface, rule.ToSource)
+	// Build rule dynamically based on which fields are set
+	// iptables -t nat -A POSTROUTING [-s source] [-d dest] -o interface -j SNAT --to-source ip
+	ruleStr := "-t nat -A POSTROUTING"
+	if rule.Source != "" {
+		ruleStr += fmt.Sprintf(" -s %s", rule.Source)
+	}
+	if rule.Destination != "" {
+		ruleStr += fmt.Sprintf(" -d %s", rule.Destination)
+	}
+	ruleStr += fmt.Sprintf(" -o %s -j SNAT --to-source %s", rule.Interface, rule.ToSource)
 
 	// Check if rule already exists
 	checkArgs := strings.Replace(ruleStr, " -A ", " -C ", 1)
@@ -188,8 +195,17 @@ func (m *Manager) applySNAT(rule SNATRule) error {
 	}
 
 	m.appliedRules = append(m.appliedRules, ruleStr)
-	log.Printf("Applied SNAT rule: %s -> %s via %s (source: %s)",
-		rule.Source, rule.Destination, rule.Interface, rule.ToSource)
+
+	// Build log message
+	logParts := []string{}
+	if rule.Source != "" {
+		logParts = append(logParts, fmt.Sprintf("-s %s", rule.Source))
+	}
+	if rule.Destination != "" {
+		logParts = append(logParts, fmt.Sprintf("-d %s", rule.Destination))
+	}
+	logParts = append(logParts, fmt.Sprintf("-o %s --to-source %s", rule.Interface, rule.ToSource))
+	log.Printf("Applied SNAT rule: %s", strings.Join(logParts, " "))
 	return nil
 }
 

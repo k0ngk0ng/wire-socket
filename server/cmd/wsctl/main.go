@@ -225,7 +225,8 @@ Commands:
   nat create <type> [options]   Create NAT rule
     For masquerade:
       nat create masquerade --interface=eth0
-    For snat:
+    For snat (--source and --dest are optional):
+      nat create snat --interface=eth0 --dest=172.27.88.136 --to-source=172.27.88.154
       nat create snat --interface=wg0 --source=10.0.0.0/24 --dest=192.168.1.0/24 --to-source=192.168.1.1
     For dnat:
       nat create dnat --interface=eth0 --protocol=tcp --port=8080 --to-dest=10.0.0.5:80
@@ -702,20 +703,21 @@ func listNATRules(db *database.DB, args []string) {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tTYPE\tINTERFACE\tDETAILS\tENABLED")
+	fmt.Fprintln(w, "ID\tTYPE\tINTERFACE\tSOURCE\tDEST\tTO-SOURCE\tENABLED")
 	for _, r := range rules {
-		details := ""
-		switch r.Type {
-		case database.NATTypeMasquerade:
-			details = "-"
-		case database.NATTypeSNAT:
-			details = fmt.Sprintf("%s -> %s", r.Source, r.ToSource)
-		case database.NATTypeDNAT:
-			details = fmt.Sprintf("%s:%d -> %s", r.Protocol, r.Port, r.ToDestination)
-		case database.NATTypeTCPMSS:
-			details = fmt.Sprintf("%s mss=%d", r.Source, r.MSS)
+		source := r.Source
+		if source == "" {
+			source = "-"
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%v\n", r.ID, r.Type, r.Interface, details, r.Enabled)
+		dest := r.Destination
+		if dest == "" {
+			dest = "-"
+		}
+		toSource := r.ToSource
+		if toSource == "" {
+			toSource = "-"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%v\n", r.ID, r.Type, r.Interface, source, dest, toSource, r.Enabled)
 	}
 	w.Flush()
 }
@@ -760,8 +762,8 @@ func createNATRule(db *database.DB, ruleType string, opts []string) {
 	case database.NATTypeMasquerade:
 		// Interface only required
 	case database.NATTypeSNAT:
-		if rule.Source == "" || rule.Destination == "" || rule.ToSource == "" {
-			fmt.Fprintln(os.Stderr, "Error: SNAT requires --source, --dest, and --to-source")
+		if rule.ToSource == "" {
+			fmt.Fprintln(os.Stderr, "Error: SNAT requires --to-source (--source and --dest are optional)")
 			os.Exit(1)
 		}
 	case database.NATTypeDNAT:
@@ -1934,20 +1936,21 @@ func listTunnelNATRules(db *database.TunnelDB) {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tTYPE\tINTERFACE\tDETAILS\tENABLED")
+	fmt.Fprintln(w, "ID\tTYPE\tINTERFACE\tSOURCE\tDEST\tTO-SOURCE\tENABLED")
 	for _, r := range rules {
-		details := ""
-		switch r.Type {
-		case database.TunnelNATTypeMasquerade:
-			details = "-"
-		case database.TunnelNATTypeSNAT:
-			details = fmt.Sprintf("%s -> %s", r.Source, r.ToSource)
-		case database.TunnelNATTypeDNAT:
-			details = fmt.Sprintf("%s:%d -> %s", r.Protocol, r.Port, r.ToDestination)
-		case database.TunnelNATTypeTCPMSS:
-			details = fmt.Sprintf("%s mss=%d", r.Source, r.MSS)
+		source := r.Source
+		if source == "" {
+			source = "-"
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%v\n", r.ID, r.Type, r.Interface, details, r.Enabled)
+		dest := r.Destination
+		if dest == "" {
+			dest = "-"
+		}
+		toSource := r.ToSource
+		if toSource == "" {
+			toSource = "-"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%v\n", r.ID, r.Type, r.Interface, source, dest, toSource, r.Enabled)
 	}
 	w.Flush()
 }
