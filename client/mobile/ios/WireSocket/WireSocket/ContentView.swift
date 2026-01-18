@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var server: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var rememberPassword: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -31,6 +32,9 @@ struct ContentView: View {
 
                         SecureField("Password", text: $password)
                             .textFieldStyle(.roundedBorder)
+
+                        Toggle("Remember Password", isOn: $rememberPassword)
+                            .toggleStyle(SwitchToggleStyle(tint: .blue))
                     }
                     .padding(.horizontal)
                 }
@@ -54,7 +58,7 @@ struct ContentView: View {
                        vpnManager.status.state == .reconnecting {
                         vpnManager.disconnect()
                     } else {
-                        vpnManager.connect(server: server, username: username, password: password)
+                        vpnManager.connect(server: server, username: username, password: password, rememberPassword: rememberPassword)
                     }
                 }) {
                     HStack {
@@ -81,7 +85,10 @@ struct ContentView: View {
             .onAppear {
                 server = vpnManager.savedServer
                 username = vpnManager.savedUsername
-                password = vpnManager.savedPassword
+                rememberPassword = vpnManager.rememberPassword
+                if rememberPassword {
+                    password = vpnManager.savedPassword
+                }
             }
         }
     }

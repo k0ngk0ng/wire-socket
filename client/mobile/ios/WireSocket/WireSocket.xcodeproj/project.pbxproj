@@ -13,6 +13,7 @@
 		004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 104 /* Assets.xcassets */; };
 		E4105E552F1C983E00D6889D /* WireSocketSDK.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E4105E542F1C983E00D6889D /* WireSocketSDK.xcframework */; };
 		E4105E562F1C983E00D6889D /* WireSocketSDK.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E4105E542F1C983E00D6889D /* WireSocketSDK.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E4BD42A92F1CA79600AFD46C /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4BD42A82F1CA79600AFD46C /* KeychainHelper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -36,6 +37,7 @@
 		104 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		301 /* WireSocket.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WireSocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4105E542F1C983E00D6889D /* WireSocketSDK.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = WireSocketSDK.xcframework; path = Frameworks/WireSocketSDK.xcframework; sourceTree = "<group>"; };
+		E4BD42A82F1CA79600AFD46C /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +64,7 @@
 		501 /* WireSocket */ = {
 			isa = PBXGroup;
 			children = (
+				E4BD42A82F1CA79600AFD46C /* KeychainHelper.swift */,
 				101 /* WireSocketApp.swift */,
 				102 /* ContentView.swift */,
 				103 /* VPNManager.swift */,
@@ -159,6 +162,7 @@
 				001 /* WireSocketApp.swift in Sources */,
 				002 /* ContentView.swift in Sources */,
 				003 /* VPNManager.swift in Sources */,
+				E4BD42A92F1CA79600AFD46C /* KeychainHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

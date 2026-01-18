@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -112,11 +113,13 @@ fun MainScreen(
     val vpnStatus by VpnStateHolder.status.collectAsStateWithLifecycle()
     val savedServer by settingsRepository.serverFlow.collectAsStateWithLifecycle(initialValue = "")
     val savedUsername by settingsRepository.usernameFlow.collectAsStateWithLifecycle(initialValue = "")
-    val savedPassword = remember { settingsRepository.getPassword() }
+    val savedRememberPassword = remember { settingsRepository.getRememberPassword() }
+    val savedPassword = remember { if (savedRememberPassword) settingsRepository.getPassword() else "" }
 
     var server by remember(savedServer) { mutableStateOf(savedServer) }
     var username by remember(savedUsername) { mutableStateOf(savedUsername) }
     var password by remember(savedPassword) { mutableStateOf(savedPassword) }
+    var rememberPassword by remember { mutableStateOf(savedRememberPassword) }
 
     val scope = rememberCoroutineScope()
     val isConnected = vpnStatus.state == ConnectionState.CONNECTED
@@ -178,6 +181,22 @@ fun MainScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                 )
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = rememberPassword,
+                        onCheckedChange = { rememberPassword = it }
+                    )
+                    Text(
+                        text = "Remember Password",
+                        modifier = Modifier.clickable { rememberPassword = !rememberPassword }
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
@@ -188,7 +207,7 @@ fun MainScreen(
                         onDisconnect()
                     } else {
                         scope.launch {
-                            settingsRepository.saveCredentials(server, username, password)
+                            settingsRepository.saveCredentials(server, username, password, rememberPassword)
                         }
                         onConnect(server, username, password)
                     }

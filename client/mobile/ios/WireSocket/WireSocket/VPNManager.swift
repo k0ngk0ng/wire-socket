@@ -30,6 +30,7 @@ class VPNManager: ObservableObject {
     @Published var savedServer: String = ""
     @Published var savedUsername: String = ""
     @Published var savedPassword: String = ""
+    @Published var rememberPassword: Bool = false
 
     private var vpnManager: NETunnelProviderManager?
     private var statusObserver: NSObjectProtocol?
@@ -38,6 +39,7 @@ class VPNManager: ObservableObject {
     private let defaults = UserDefaults.standard
     private let serverKey = "saved_server"
     private let usernameKey = "saved_username"
+    private let rememberPasswordKey = "remember_password"
     private let passwordKeychainAccount = "vpn_password"
 
     // Bundle identifier for the Network Extension
@@ -59,16 +61,28 @@ class VPNManager: ObservableObject {
     private func loadSavedCredentials() {
         savedServer = defaults.string(forKey: serverKey) ?? ""
         savedUsername = defaults.string(forKey: usernameKey) ?? ""
-        savedPassword = KeychainHelper.shared.get(for: passwordKeychainAccount) ?? ""
+        rememberPassword = defaults.bool(forKey: rememberPasswordKey)
+        if rememberPassword {
+            savedPassword = KeychainHelper.shared.get(for: passwordKeychainAccount) ?? ""
+        }
     }
 
-    func saveCredentials(server: String, username: String, password: String) {
+    func saveCredentials(server: String, username: String, password: String, rememberPassword: Bool) {
         defaults.set(server, forKey: serverKey)
         defaults.set(username, forKey: usernameKey)
-        KeychainHelper.shared.save(password: password, for: passwordKeychainAccount)
+        defaults.set(rememberPassword, forKey: rememberPasswordKey)
+
+        if rememberPassword {
+            KeychainHelper.shared.save(password: password, for: passwordKeychainAccount)
+            savedPassword = password
+        } else {
+            KeychainHelper.shared.delete(for: passwordKeychainAccount)
+            savedPassword = ""
+        }
+
         savedServer = server
         savedUsername = username
-        savedPassword = password
+        self.rememberPassword = rememberPassword
     }
 
     private func loadVPNConfiguration() {
@@ -124,13 +138,13 @@ class VPNManager: ObservableObject {
         }
     }
 
-    func connect(server: String, username: String, password: String) {
+    func connect(server: String, username: String, password: String, rememberPassword: Bool) {
         guard status.state == .disconnected || status.state == .failed else {
             return
         }
 
         status.state = .connecting
-        saveCredentials(server: server, username: username, password: password)
+        saveCredentials(server: server, username: username, password: password, rememberPassword: rememberPassword)
         status.server = server
 
         // Create or update VPN configuration
