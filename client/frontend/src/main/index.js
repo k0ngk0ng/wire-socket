@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, nativeImage, globalShortcut, shell } = require('electron');
 const path = require('path');
 const axios = require('axios');
 const sudo = require('@vscode/sudo-prompt');
 const fs = require('fs');
 const { execSync } = require('child_process');
+
+// SSO Protocol scheme
+const SSO_PROTOCOL = 'wiresocket';
 
 // Dev tools activation state
 let devToolsActivated = false;
@@ -634,6 +637,49 @@ function updateTrayMenu(isConnected = false) {
   }
 }
 
+// Register as protocol handler for SSO callbacks
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(SSO_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(SSO_PROTOCOL);
+}
+
+// Handle SSO callback URL
+function handleSSOCallback(url) {
+  console.log('SSO callback received:', url);
+  try {
+    const parsedUrl = new URL(url);
+    const token = parsedUrl.searchParams.get('token');
+    const error = parsedUrl.searchParams.get('error');
+
+    if (mainWindow) {
+      if (token) {
+        mainWindow.webContents.send('sso:callback', { success: true, token });
+      } else if (error) {
+        mainWindow.webContents.send('sso:callback', { success: false, error });
+      }
+      // Show and focus the window
+      if (process.platform === 'darwin') {
+        app.dock.show();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  } catch (e) {
+    console.error('Failed to parse SSO callback URL:', e);
+  }
+}
+
+// macOS: Handle protocol URL when app is already running
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (url.startsWith(SSO_PROTOCOL + '://')) {
+    handleSSOCallback(url);
+  }
+});
+
 app.whenReady().then(async () => {
   createWindow();
   createTray();
@@ -641,12 +687,38 @@ app.whenReady().then(async () => {
   // Initialize and ensure backend service is running
   await initializeService();
 
+  // Windows/Linux: Handle protocol URL from command line
+  const protocolUrl = process.argv.find(arg => arg.startsWith(SSO_PROTOCOL + '://'));
+  if (protocolUrl) {
+    handleSSOCallback(protocolUrl);
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
+
+// Handle second instance (Windows/Linux protocol handler)
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine) => {
+    // Someone tried to run a second instance, focus our window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    // Check for protocol URL in command line
+    const protocolUrl = commandLine.find(arg => arg.startsWith(SSO_PROTOCOL + '://'));
+    if (protocolUrl) {
+      handleSSOCallback(protocolUrl);
+    }
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -783,6 +855,68 @@ ipcMain.handle('devtools:activate', async () => {
   }, 10000);
 
   return { success: true };
+});
+
+// SSO Handlers
+
+// Get available SSO providers from server
+ipcMain.handle('sso:getProviders', async (event, serverAddress) => {
+  try {
+    const response = await axios.get(`${serverAddress}/api/auth/providers`, { timeout: 10000 });
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+});
+
+// Open SSO login in default browser
+ipcMain.handle('sso:login', async (event, { serverAddress, providerId }) => {
+  try {
+    // Build callback URL using our protocol
+    const callbackUrl = `${SSO_PROTOCOL}://auth/callback`;
+    const ssoUrl = `${serverAddress}/api/auth/sso/${providerId}?redirect_uri=${encodeURIComponent(callbackUrl)}`;
+
+    console.log('Opening SSO URL:', ssoUrl);
+    await shell.openExternal(ssoUrl);
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// Connect with SSO token
+ipcMain.handle('sso:connectWithToken', async (event, { serverAddress, token }) => {
+  try {
+    // First, get user info and config with the token
+    const configResponse = await axios.get(`${serverAddress}/api/config`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      timeout: 10000
+    });
+
+    // Now connect to VPN using the config
+    const connectData = {
+      server_address: serverAddress,
+      tunnel_url: serverAddress,
+      token: token,
+      // Pass the config directly if backend supports it
+      ...configResponse.data
+    };
+
+    const response = await axios.post(`${getApiBase()}/api/connect`, connectData);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
 });
 
 // Register keyboard shortcut for dev tools (only works when activated)

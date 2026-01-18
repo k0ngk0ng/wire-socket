@@ -355,6 +355,36 @@
       padding: 8px 14px;
       font-size: 13px;
     }
+
+    .sso-btn {
+      padding: 10px 16px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: #333;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .sso-btn:hover {
+      background: #f8f9fa;
+      border-color: #667eea;
+    }
+
+    .sso-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .sso-icon {
+      width: 18px;
+      height: 18px;
+    }
   </style>
 </head>
 <body>
@@ -384,8 +414,20 @@
     <div id="loginForm" class="hidden">
       <div class="form-group">
         <label for="serverAddress">Server Address</label>
-        <input type="text" id="serverAddress" placeholder="vpn.example.com">
+        <input type="text" id="serverAddress" placeholder="vpn.example.com" onblur="checkSSOProviders()">
       </div>
+
+      <!-- SSO Providers (shown if server supports SSO) -->
+      <div id="ssoProviders" class="hidden" style="margin-bottom: 15px;">
+        <div style="text-align: center; color: #666; font-size: 12px; margin-bottom: 10px;">Sign in with</div>
+        <div id="ssoButtonsContainer" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;"></div>
+        <div style="display: flex; align-items: center; margin: 15px 0;">
+          <div style="flex: 1; height: 1px; background: #e0e0e0;"></div>
+          <span style="padding: 0 15px; color: #999; font-size: 12px;">or use local account</span>
+          <div style="flex: 1; height: 1px; background: #e0e0e0;"></div>
+        </div>
+      </div>
+
       <div class="form-group">
         <label for="username">Username</label>
         <input type="text" id="username" placeholder="Enter your username">
@@ -1055,6 +1097,163 @@
 
     function hidePasswordMessage() {
       document.getElementById('passwordMessage').classList.add('hidden');
+    }
+
+    // ======== SSO Functions ========
+
+    let ssoProviders = [];
+    let lastCheckedServer = '';
+    let ssoCheckTimeout = null;
+    let pendingSSOToken = null;
+
+    // Check for SSO providers when server address changes
+    async function checkSSOProviders() {
+      let serverAddress = document.getElementById('serverAddress').value.trim();
+      if (!serverAddress) {
+        hideSSOProviders();
+        return;
+      }
+
+      // Don't re-check the same server
+      const normalizedServer = normalizeServerUrl(serverAddress);
+      if (normalizedServer === lastCheckedServer) return;
+      lastCheckedServer = normalizedServer;
+
+      // Debounce
+      if (ssoCheckTimeout) clearTimeout(ssoCheckTimeout);
+      ssoCheckTimeout = setTimeout(async () => {
+        try {
+          if (window.electronAPI && window.electronAPI.ssoGetProviders) {
+            const result = await window.electronAPI.ssoGetProviders(normalizedServer);
+            if (result.success && result.data && result.data.providers) {
+              // Filter out local provider and check for SSO providers
+              ssoProviders = result.data.providers.filter(p => p.type !== 'local');
+              if (ssoProviders.length > 0) {
+                renderSSOProviders(ssoProviders);
+                showSSOProviders();
+              } else {
+                hideSSOProviders();
+              }
+            } else {
+              hideSSOProviders();
+            }
+          }
+        } catch (e) {
+          console.log('SSO check failed:', e);
+          hideSSOProviders();
+        }
+      }, 500);
+    }
+
+    function renderSSOProviders(providers) {
+      const container = document.getElementById('ssoButtonsContainer');
+      container.innerHTML = '';
+
+      providers.forEach(provider => {
+        const btn = document.createElement('button');
+        btn.className = 'sso-btn';
+        btn.onclick = () => startSSOLogin(provider.id);
+
+        // Get icon based on provider type/id
+        const icon = getSSOIcon(provider.id, provider.type);
+        btn.innerHTML = `${icon}<span>${provider.name}</span>`;
+
+        container.appendChild(btn);
+      });
+    }
+
+    function getSSOIcon(providerId, providerType) {
+      // SVG icons for common providers
+      const icons = {
+        'azure-ad': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#00a4ef" d="M11.4 0L0 4.2v9.3l11.4 9.9 12.6-4.2V9.6L11.4 0zM8.9 18.8L2.2 14V5.8l6.7 3.7v9.3zm9.9-4.8l-6.7 3.7V8.4l6.7-3.7v9.3z"/></svg>',
+        'google': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
+        'github': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#333" d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>',
+        'gitlab': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#E24329" d="m12 22.03l4.55-14H7.45l4.55 14z"/><path fill="#FC6D26" d="M12 22.03L7.45 8.03H1.51l10.49 14z"/><path fill="#FCA326" d="M1.51 8.03l-.95 2.92c-.09.27 0 .57.23.73L12 22.03 1.51 8.03z"/><path fill="#E24329" d="M1.51 8.03h5.94L4.98.79a.38.38 0 00-.72 0L1.51 8.03z"/><path fill="#FC6D26" d="M12 22.03l4.55-14h5.94L12 22.03z"/><path fill="#FCA326" d="m22.49 8.03.95 2.92c.09.27 0 .57-.23.73L12 22.03l10.49-14z"/><path fill="#E24329" d="M22.49 8.03h-5.94l2.47-7.24a.38.38 0 01.72 0l2.75 7.24z"/></svg>',
+        'okta': '<svg class="sso-icon" viewBox="0 0 24 24"><circle fill="#007DC1" cx="12" cy="12" r="10"/><circle fill="#fff" cx="12" cy="12" r="4"/></svg>',
+        'keycloak': '<svg class="sso-icon" viewBox="0 0 24 24"><rect fill="#4D4D4D" width="24" height="24" rx="4"/><text x="12" y="16" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">K</text></svg>',
+        'auth0': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#EB5424" d="M21.98 7.45L19.63 0H4.38L2.02 7.45 12 24l9.98-16.55zM12 18.9L6.42 9.5 8.63 3h6.74l2.21 6.5L12 18.9z"/></svg>',
+      };
+
+      // Try to match by provider ID first, then by type
+      if (icons[providerId]) return icons[providerId];
+      if (icons[providerType]) return icons[providerType];
+
+      // Default icon for unknown providers
+      return '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#667eea" d="M12 1a11 11 0 100 22 11 11 0 000-22zm0 5a3 3 0 110 6 3 3 0 010-6zm0 14c-2.67 0-5.02-1.35-6.4-3.4.03-2.12 4.27-3.3 6.4-3.3 2.12 0 6.37 1.18 6.4 3.3A7.96 7.96 0 0112 20z"/></svg>';
+    }
+
+    function showSSOProviders() {
+      document.getElementById('ssoProviders').classList.remove('hidden');
+    }
+
+    function hideSSOProviders() {
+      document.getElementById('ssoProviders').classList.add('hidden');
+      ssoProviders = [];
+    }
+
+    async function startSSOLogin(providerId) {
+      const serverAddress = normalizeServerUrl(document.getElementById('serverAddress').value.trim());
+      if (!serverAddress) {
+        showError('Please enter a server address');
+        return;
+      }
+
+      // Disable SSO buttons
+      document.querySelectorAll('.sso-btn').forEach(btn => btn.disabled = true);
+
+      try {
+        const result = await window.electronAPI.ssoLogin(serverAddress, providerId);
+        if (!result.success) {
+          showError(result.error || 'Failed to start SSO login');
+        }
+        // Browser will open for SSO, callback will be handled by onSSOCallback
+      } catch (e) {
+        showError('SSO login failed: ' + e.message);
+      }
+
+      // Re-enable buttons after a short delay
+      setTimeout(() => {
+        document.querySelectorAll('.sso-btn').forEach(btn => btn.disabled = false);
+      }, 2000);
+    }
+
+    // Handle SSO callback from deep link
+    if (window.electronAPI && window.electronAPI.onSSOCallback) {
+      window.electronAPI.onSSOCallback(async (result) => {
+        if (result.success && result.token) {
+          // Got token from SSO, now connect to VPN
+          const serverAddress = normalizeServerUrl(document.getElementById('serverAddress').value.trim());
+
+          connectBtn.disabled = true;
+          connectBtn.textContent = 'Connecting...';
+          hideError();
+
+          try {
+            // Connect using token
+            const connectResult = await window.electronAPI.connect({
+              server_address: serverAddress,
+              tunnel_url: serverAddress,
+              token: result.token
+            });
+
+            if (connectResult.success) {
+              // Save server (not credentials for SSO)
+              localStorage.setItem('wiresocket_server', document.getElementById('serverAddress').value.trim());
+              showConnectedView();
+              startStatusCheck();
+            } else {
+              showError(connectResult.error || 'Connection failed');
+            }
+          } catch (e) {
+            showError('Connection failed: ' + e.message);
+          }
+
+          connectBtn.disabled = false;
+          connectBtn.textContent = 'Connect to VPN';
+        } else if (result.error) {
+          showError('SSO login failed: ' + result.error);
+        }
+      });
     }
 
     // Start waiting for backend on page load

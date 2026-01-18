@@ -24,4 +24,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // App title/tooltip
   updateTitle: (serverAddress) => ipcRenderer.invoke('app:updateTitle', serverAddress),
+
+  // SSO functions
+  ssoGetProviders: (serverAddress) => ipcRenderer.invoke('sso:getProviders', serverAddress),
+  ssoLogin: (serverAddress, providerId) => ipcRenderer.invoke('sso:login', { serverAddress, providerId }),
+  ssoConnectWithToken: (serverAddress, token) => ipcRenderer.invoke('sso:connectWithToken', { serverAddress, token }),
+  onSSOCallback: (callback) => ipcRenderer.on('sso:callback', (event, result) => callback(result)),
 });

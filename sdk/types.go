@@ -22,11 +22,15 @@ type ConnectConfig struct {
 	// Server is the VPN server address (e.g., "https://vpn.example.com")
 	Server string
 
-	// Username for authentication
+	// Username for authentication (used with Password)
 	Username string
 
-	// Password for authentication
+	// Password for authentication (used with Username)
 	Password string
+
+	// Token for SSO/OAuth authentication (alternative to Username/Password)
+	// If Token is provided, Username/Password are ignored
+	Token string
 
 	// ExcludedRoutes is a list of CIDRs to exclude from VPN tunnel
 	ExcludedRoutes []string

@@ -46,6 +46,7 @@ type ConnectRequest struct {
 	TunnelURL     string `json:"tunnel_url"`
 	Username      string `json:"username"`
 	Password      string `json:"password"`
+	Token         string `json:"token"` // SSO token (alternative to username/password)
 }
 
 // Status represents the current connection status
@@ -134,6 +135,7 @@ func (m *Manager) Connect(req ConnectRequest) error {
 	config.Server = req.ServerAddress
 	config.Username = req.Username
 	config.Password = req.Password
+	config.Token = req.Token // SSO token support
 	config.AutoReconnect = true
 
 	err := m.client.Connect(config)

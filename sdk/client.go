@@ -344,36 +344,43 @@ func (c *Client) doConnect(config ConnectConfig) {
 
 func (c *Client) authenticate(config ConnectConfig) (*wgConfig, string, string, []string, error) {
 	apiBase := normalizeServerURL(config.Server)
+	var token string
 
-	// Login
-	loginURL := apiBase + "/api/auth/login"
-	loginData := map[string]string{
-		"username": config.Username,
-		"password": config.Password,
-	}
+	// If token is provided (SSO), skip login
+	if config.Token != "" {
+		token = config.Token
+	} else {
+		// Login with username/password
+		loginURL := apiBase + "/api/auth/login"
+		loginData := map[string]string{
+			"username": config.Username,
+			"password": config.Password,
+		}
 
-	jsonData, _ := json.Marshal(loginData)
-	resp, err := http.Post(loginURL, "application/json", bytes.NewReader(jsonData))
-	if err != nil {
-		return nil, "", "", nil, err
-	}
-	defer resp.Body.Close()
+		jsonData, _ := json.Marshal(loginData)
+		resp, err := http.Post(loginURL, "application/json", bytes.NewReader(jsonData))
+		if err != nil {
+			return nil, "", "", nil, err
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", "", nil, fmt.Errorf("login failed with status: %d", resp.StatusCode)
-	}
+		if resp.StatusCode != http.StatusOK {
+			return nil, "", "", nil, fmt.Errorf("login failed with status: %d", resp.StatusCode)
+		}
 
-	var loginResp struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
-		return nil, "", "", nil, err
+		var loginResp struct {
+			Token string `json:"token"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
+			return nil, "", "", nil, err
+		}
+		token = loginResp.Token
 	}
 
 	// Get config
 	configURL := apiBase + "/api/config"
 	req, _ := http.NewRequest("GET", configURL, nil)
-	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := &http.Client{}
 	configResp, err := client.Do(req)
@@ -413,7 +420,7 @@ func (c *Client) authenticate(config ConnectConfig) (*wgConfig, string, string, 
 		AllowedIPs:    strings.Split(configData.Config.Peer.AllowedIPs, ","),
 	}
 
-	return wgCfg, loginResp.Token, configData.TunnelURL, configData.Routes, nil
+	return wgCfg, token, configData.TunnelURL, configData.Routes, nil
 }
 
 func (c *Client) setError(err error) {
