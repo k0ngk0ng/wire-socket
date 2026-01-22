@@ -39,10 +39,15 @@ func setTunAddress(name, address string) error {
 // setRoutes configures routes through the TUN interface (macOS)
 func setRoutes(name string, routes []net.IPNet) error {
 	for _, route := range routes {
-		// Get the gateway (interface address)
+		// Delete any existing route first to ensure it points to the correct interface
+		// This is critical for reconnection scenarios where a new TUN interface is created
+		deleteCmd := exec.Command("route", "-n", "delete", "-net", route.String())
+		deleteCmd.Run() // Ignore errors - route might not exist
+
+		// Add the route to the new interface
 		cmd := exec.Command("route", "-n", "add", "-net", route.String(), "-interface", name)
 		if output, err := cmd.CombinedOutput(); err != nil {
-			// Ignore if route already exists
+			// Ignore if route already exists (shouldn't happen after delete, but be safe)
 			if !strings.Contains(string(output), "File exists") && !strings.Contains(string(output), "already in table") {
 				return fmt.Errorf("failed to add route %s: %s: %w", route.String(), string(output), err)
 			}

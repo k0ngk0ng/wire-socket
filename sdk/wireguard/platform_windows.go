@@ -140,6 +140,11 @@ func setRoutes(name string, routes []net.IPNet) error {
 			gateway = "0.0.0.0"
 		}
 
+		// Delete any existing route first to ensure it points to the correct interface
+		// This is critical for reconnection scenarios where a new TUN interface is created
+		deleteCmd := exec.Command("route", "delete", route.IP.String(), "mask", mask)
+		deleteCmd.Run() // Ignore errors - route might not exist
+
 		cmd := exec.Command("route", "add", route.IP.String(), "mask", mask, gateway, "if", strconv.Itoa(ifIndex))
 		log.Printf("Executing: route add %s mask %s %s if %d", route.IP.String(), mask, gateway, ifIndex)
 		output, err := cmd.CombinedOutput()
@@ -186,6 +191,14 @@ func setRoutesNetsh(name string, routes []net.IPNet) error {
 func addRouteNetsh(name string, route net.IPNet, gatewayIP string) error {
 	ones, _ := route.Mask.Size()
 	prefix := fmt.Sprintf("%s/%d", route.IP.String(), ones)
+
+	// Delete any existing route first to ensure it points to the correct interface
+	// This is critical for reconnection scenarios where a new TUN interface is created
+	deleteCmd := exec.Command("netsh", "interface", "ipv4", "delete", "route",
+		prefix,
+		fmt.Sprintf("interface=%s", name),
+		"store=active")
+	deleteCmd.Run() // Ignore errors - route might not exist
 
 	var cmd *exec.Cmd
 	if gatewayIP != "" {
