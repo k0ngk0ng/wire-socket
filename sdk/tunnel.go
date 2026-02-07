@@ -90,12 +90,29 @@ func (t *tunnelClient) connectWebSocket() error {
 	t.lastPong = time.Now()
 	t.connMu.Unlock()
 
-	// Set pong handler
+	// Set pong handler - tracks responses to our pings
 	conn.SetPongHandler(func(string) error {
 		t.connMu.Lock()
 		t.lastPong = time.Now()
 		t.connMu.Unlock()
 		return nil
+	})
+
+	// Set ping handler - server also sends pings to us
+	// Default handler auto-responds with pong, but we also update lastPong
+	// to reflect that the connection is alive (server reached us)
+	conn.SetPingHandler(func(appData string) error {
+		t.connMu.Lock()
+		t.lastPong = time.Now()
+		t.connMu.Unlock()
+		// Send pong response (same as default handler behavior)
+		err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(tunnelPongTimeout))
+		if err == websocket.ErrCloseSent {
+			return nil
+		} else if e, ok := err.(net.Error); ok && e.Timeout() {
+			return nil
+		}
+		return err
 	})
 
 	return nil

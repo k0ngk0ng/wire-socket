@@ -162,9 +162,21 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Set up ping/pong handling
-	// When client sends ping, gorilla/websocket auto-responds with pong
-	// We need to update read deadline on pong to keep connection alive
+	// Client sends ping every 30s - we must extend read deadline on receiving ping
+	// The default PingHandler auto-responds with pong, but does NOT extend the deadline
+	// We override it to both respond with pong AND extend the read deadline
 	conn.SetReadDeadline(time.Now().Add(ReadTimeout))
+	conn.SetPingHandler(func(appData string) error {
+		conn.SetReadDeadline(time.Now().Add(ReadTimeout))
+		// Send pong response (same as default handler behavior)
+		err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(10*time.Second))
+		if err == websocket.ErrCloseSent {
+			return nil
+		} else if e, ok := err.(net.Error); ok && e.Timeout() {
+			return nil
+		}
+		return err
+	})
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(ReadTimeout))
 		return nil
@@ -191,7 +203,14 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
+
+	// Server-side ping loop: actively ping client to keep connection alive
+	go func() {
+		defer wg.Done()
+		defer cancel()
+		s.pingLoop(ctx, conn)
+	}()
 
 	// WebSocket -> UDP
 	go func() {
@@ -268,6 +287,27 @@ func (s *Server) udpToWS(ctx context.Context, udp *net.UDPConn, ws *websocket.Co
 		if err != nil {
 			log.Printf("WebSocket write error: %v", err)
 			return
+		}
+	}
+}
+
+// pingLoop sends periodic ping messages from server to client to keep the connection alive.
+// This ensures bidirectional keepalive: client pings server AND server pings client.
+func (s *Server) pingLoop(ctx context.Context, ws *websocket.Conn) {
+	ticker := time.NewTicker(PingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			deadline := time.Now().Add(PongTimeout)
+			if err := ws.WriteControl(websocket.PingMessage, []byte{}, deadline); err != nil {
+				// Connection is likely dead
+				log.Printf("Server ping failed: %v", err)
+				return
+			}
 		}
 	}
 }
