@@ -1,6 +1,6 @@
 {
   "name": "wire-socket",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "description": "Cross-platform VPN client with WireGuard over WebSocket tunneling",
   "repository": {
     "type": "git",
