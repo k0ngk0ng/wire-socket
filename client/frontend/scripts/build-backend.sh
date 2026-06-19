@@ -79,11 +79,11 @@ else
     echo "✓ Windows AMD64 build is up to date"
 fi
 
-# Update package.json version
+# Update frontend and Tauri package versions
 echo ""
-echo "📝 Updating package.json version to ${VERSION}..."
+echo "📝 Updating package versions to ${VERSION}..."
 cd "$SCRIPT_DIR/.."
-node -e "const pkg = require('./package.json'); pkg.version = '${VERSION}'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+node scripts/sync-version.js "${VERSION}"
 
 echo ""
 echo "✅ All builds ready! (v${VERSION})"

@@ -5,536 +5,817 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WireSocket VPN</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f4f6;
+      --panel: #ffffff;
+      --panel-2: #f8f8fa;
+      --border: #d9d9de;
+      --border-strong: #c6c6cc;
+      --text: #1d1d20;
+      --muted: #686872;
+      --muted-2: #8b8b95;
+      --accent: #1165d8;
+      --accent-hover: #0d55b8;
+      --accent-soft: #eaf2ff;
+      --danger: #c9342f;
+      --danger-hover: #a92b27;
+      --success: #1c7f45;
+      --warning: #a96700;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      --radius: 8px;
     }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1f2024;
+        --panel: #2a2b30;
+        --panel-2: #232428;
+        --border: #3d3f45;
+        --border-strong: #52545c;
+        --text: #f2f2f3;
+        --muted: #b4b4bb;
+        --muted-2: #898b94;
+        --accent: #4e9bff;
+        --accent-hover: #78b3ff;
+        --accent-soft: #16314f;
+        --danger: #ff6b63;
+        --danger-hover: #ff8a84;
+        --success: #62d68c;
+        --warning: #f0b45b;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0;
       min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      letter-spacing: 0;
+      overflow: hidden;
     }
 
-    .container {
-      background: white;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      width: 100%;
-      max-width: 420px;
-      padding: 30px;
+    button, input {
+      font: inherit;
+      letter-spacing: 0;
     }
 
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 25px;
+    .app-shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      height: 100vh;
+      min-width: 760px;
     }
 
-    .header-left {
+    .sidebar {
       display: flex;
       flex-direction: column;
+      gap: 16px;
+      padding: 20px 12px 14px;
+      background: color-mix(in srgb, var(--panel-2) 92%, var(--border));
+      border-right: 1px solid var(--border);
     }
 
-    h1 {
-      color: #333;
-      font-size: 24px;
+    .brand {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 2px 6px 8px;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(145deg, #1268d8, #0c4ea6);
+      border-radius: 7px;
+      font-weight: 700;
+      box-shadow: var(--shadow);
+    }
+
+    .brand-name { font-size: 15px; font-weight: 650; }
+    .brand-subtitle { margin-top: 2px; color: var(--muted); font-size: 11px; }
+
+    .service-row {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 8px;
-      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
     }
 
-    .app-icon { font-size: 28px; }
-
-    .backend-indicator {
-      width: 10px;
-      height: 10px;
+    .service-label { color: var(--muted); }
+    .status-dot {
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
-      background-color: #e74c3c;
-      transition: background-color 0.3s;
-      flex-shrink: 0;
-      margin-top: 5px;
+      background: var(--danger);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
     }
-
-    .backend-indicator.online { background-color: #2ecc71; }
-    .backend-indicator.connecting {
-      background-color: #f39c12;
-      animation: pulse 1.5s ease-in-out infinite;
+    .status-dot.online {
+      background: var(--success);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
+    }
+    .status-dot.connecting {
+      background: var(--warning);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 18%, transparent);
+      animation: pulse 1.2s ease-in-out infinite;
     }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+      50% { opacity: .45; }
+    }
+
+    .nav {
+      display: grid;
+      gap: 4px;
+    }
+
+    .nav-button {
+      width: 100%;
+      height: 34px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 10px;
+      cursor: default;
+      text-align: left;
+    }
+
+    .nav-button:hover { background: color-mix(in srgb, var(--border) 45%, transparent); }
+    .nav-button.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .nav-icon {
+      width: 16px;
+      height: 16px;
+      color: currentColor;
+      flex: 0 0 16px;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      color: var(--muted-2);
+      font-size: 11px;
+      padding: 0 6px;
+      line-height: 1.4;
+    }
+
+    .content {
+      min-width: 0;
+      overflow: auto;
+      padding: 26px 32px 32px;
+    }
+
+    .view { display: none; max-width: 760px; }
+    .view.active { display: block; }
+
+    .view-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 680;
+    }
+
+    .header-note {
+      color: var(--muted);
+      margin-top: 5px;
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 9px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--panel);
+      white-space: nowrap;
+    }
+    .badge.connected { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+    .badge.connecting { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); }
+    .badge.error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      background: color-mix(in srgb, var(--panel) 86%, var(--panel-2));
+    }
+
+    .section-body { padding: 14px; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .form-row { display: contents; }
+
+    label.form-label {
+      display: flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 0 12px;
+      color: var(--muted);
+      background: var(--panel-2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .form-row:last-child label.form-label,
+    .form-row:last-child .field-cell {
+      border-bottom: none;
+    }
+
+    .field-cell {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      min-width: 0;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      min-width: 0;
+      height: 30px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      padding: 0 7px;
+      outline: none;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+    }
+
+    .checkbox-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      margin: 12px 0 0;
+      user-select: none;
+    }
+
+    .checkbox-line input {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+    }
+
+    .button-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .button {
+      height: 32px;
+      min-width: 92px;
+      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+      background: var(--panel);
+      color: var(--text);
+      padding: 0 13px;
+      cursor: default;
+    }
+    .button:hover { background: var(--panel-2); }
+    .button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+    .button.primary:hover { background: var(--accent-hover); }
+    .button.danger {
+      border-color: var(--danger);
+      background: var(--danger);
+      color: white;
+    }
+    .button.danger:hover { background: var(--danger-hover); }
+    .button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .message {
+      display: none;
+      margin-top: 12px;
+      border-radius: 6px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--panel-2);
+    }
+    .message.show { display: block; }
+    .message.error {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+      background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+    }
+    .message.success {
+      color: var(--success);
+      border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+      background: color-mix(in srgb, var(--success) 8%, var(--panel));
+    }
+
+    .service-banner {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      color: var(--muted);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 14px;
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid color-mix(in srgb, var(--muted) 30%, transparent);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
     }
 
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      to { transform: rotate(360deg); }
     }
 
-    .form-group { margin-bottom: 15px; }
-
-    label {
-      display: block;
-      margin-bottom: 6px;
-      color: #555;
-      font-weight: 500;
-      font-size: 13px;
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
     }
 
-    input {
-      width: 100%;
-      padding: 10px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
+    .status-cell {
+      min-height: 54px;
+      padding: 10px 12px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .status-cell:nth-child(2n) { border-right: none; }
+    .status-cell:nth-last-child(-n + 2) { border-bottom: none; }
+
+    .status-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+    .status-value {
       font-size: 14px;
-      transition: border-color 0.3s;
+      font-weight: 620;
+      word-break: break-word;
     }
 
-    input:focus {
-      outline: none;
-      border-color: #667eea;
-    }
-
-    .btn {
-      width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
-    }
-
-    .btn-danger {
-      background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-      color: white;
-    }
-
-    .btn-danger:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(231, 76, 60, 0.4);
-    }
-
-    .btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none !important;
-    }
-
-    .status-box {
-      background: #f8f9fa;
-      border-radius: 10px;
-      padding: 15px;
-    }
-
-    .status-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid #e0e0e0;
-    }
-
-    .status-item:last-child { border-bottom: none; }
-
-    .status-label { color: #666; font-size: 13px; }
-    .status-value { color: #333; font-weight: 600; font-size: 13px; }
-
-    .error-message {
-      background: #ffe6e6;
-      color: #c0392b;
-      padding: 10px;
-      border-radius: 8px;
+    .traffic-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
       margin-top: 12px;
-      font-size: 13px;
+    }
+    .traffic-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--panel-2);
+    }
+    .traffic-value {
+      margin-top: 4px;
+      font-size: 20px;
+      font-weight: 680;
+      color: var(--accent);
+    }
+
+    .sso-block {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--panel-2);
+    }
+
+    .sso-title { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+
+    .sso-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .sso-btn {
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: default;
+    }
+    .sso-btn:hover { border-color: var(--accent); }
+    .sso-icon { width: 16px; height: 16px; }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .toolbar input {
+      height: 30px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0 9px;
+    }
+
+    .route-list {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      max-height: 300px;
+      overflow-y: auto;
+      background: var(--panel);
+    }
+
+    .route-item {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      align-items: center;
+      min-height: 36px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .route-item:last-child { border-bottom: none; }
+    .route-item input { width: 14px; height: 14px; accent-color: var(--accent); }
+    .route-item label {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+
+    .empty-state {
+      padding: 22px 14px;
+      color: var(--muted);
+      text-align: center;
     }
 
     .hidden { display: none !important; }
 
-    .traffic-stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .traffic-card {
-      background: white;
-      padding: 12px;
-      border-radius: 8px;
-      text-align: center;
-    }
-
-    .traffic-label { font-size: 11px; color: #666; margin-bottom: 4px; }
-    .traffic-value { font-size: 18px; font-weight: bold; color: #667eea; }
-
-    .loading-view { text-align: center; padding: 30px 20px; }
-
-    .loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid #e0e0e0;
-      border-top-color: #667eea;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 15px;
-    }
-
-    .loading-text { color: #666; font-size: 15px; margin-bottom: 8px; }
-    .loading-subtext { color: #999; font-size: 13px; }
-
-    .vpn-status-text { color: #666; font-size: 13px; margin-top: 4px; }
-
-    .checkbox-group { margin-bottom: 15px; }
-
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      cursor: pointer;
-      font-size: 13px;
-      color: #555;
-    }
-
-    .checkbox-label input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      margin-right: 8px;
-      cursor: pointer;
-      accent-color: #667eea;
-    }
-
-    .settings-btn {
-      background: none;
-      border: none;
-      font-size: 18px;
-      cursor: pointer;
-      opacity: 0.6;
-      transition: opacity 0.3s;
-      padding: 5px;
-    }
-
-    .settings-btn:hover { opacity: 1; }
-
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .modal {
-      background: white;
-      border-radius: 14px;
-      width: 90%;
-      max-width: 400px;
-      max-height: 85vh;
-      overflow: hidden;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    }
-
-    .modal-header {
-      padding: 15px 20px;
-      border-bottom: 1px solid #e0e0e0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .modal-header h2 { margin: 0; font-size: 16px; color: #333; }
-
-    .modal-close {
-      background: none;
-      border: none;
-      font-size: 22px;
-      cursor: pointer;
-      color: #666;
-      line-height: 1;
-    }
-
-    .modal-close:hover { color: #333; }
-
-    .modal-tabs {
-      display: flex;
-      border-bottom: 1px solid #e0e0e0;
-    }
-
-    .modal-tab {
-      flex: 1;
-      padding: 10px 14px;
-      background: none;
-      border: none;
-      font-size: 13px;
-      color: #666;
-      cursor: pointer;
-      transition: all 0.2s;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-    }
-
-    .modal-tab:hover { color: #667eea; background: #f8f9ff; }
-    .modal-tab.active { color: #667eea; border-bottom-color: #667eea; font-weight: 500; }
-
-    .tab-content { padding: 15px 20px; }
-    .tab-pane { display: none; }
-    .tab-pane.active { display: block; }
-
-    .route-list {
-      max-height: 180px;
-      overflow-y: auto;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-    }
-
-    .route-item {
-      display: flex;
-      align-items: center;
-      padding: 8px 10px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .route-item:last-child { border-bottom: none; }
-
-    .route-item input[type="checkbox"] {
-      width: 15px;
-      height: 15px;
-      margin-right: 8px;
-      accent-color: #667eea;
-    }
-
-    .route-item label {
-      font-size: 12px;
-      color: #333;
-      font-family: monospace;
-      margin: 0;
-      cursor: pointer;
-    }
-
-    .empty-state {
-      padding: 15px;
-      text-align: center;
-      color: #999;
-      font-size: 13px;
-    }
-
-    .success-message {
-      background: #d4edda;
-      color: #155724;
-      padding: 10px;
-      border-radius: 8px;
-      margin-top: 12px;
-      font-size: 13px;
-    }
-
-    .btn-small {
-      padding: 8px 14px;
-      font-size: 13px;
-    }
-
-    .sso-btn {
-      padding: 10px 16px;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      background: white;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      color: #333;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.2s;
-    }
-
-    .sso-btn:hover {
-      background: #f8f9fa;
-      border-color: #667eea;
-    }
-
-    .sso-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .sso-icon {
-      width: 18px;
-      height: 18px;
+    @media (max-width: 780px) {
+      body { overflow: auto; }
+      .app-shell {
+        grid-template-columns: 1fr;
+        min-width: 0;
+        height: auto;
+        min-height: 100vh;
+      }
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .nav-button {
+        justify-content: center;
+        padding: 0 8px;
+      }
+      .content { padding: 20px; }
+      .form-grid { grid-template-columns: 1fr; }
+      label.form-label {
+        min-height: 28px;
+        border-bottom: none;
+      }
+      .field-cell { border-bottom: 1px solid var(--border); }
+      .status-grid { grid-template-columns: 1fr; }
+      .status-cell { border-right: none; }
+      .status-cell:nth-last-child(-n + 2) { border-bottom: 1px solid var(--border); }
+      .status-cell:last-child { border-bottom: none; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <div class="header-left">
-        <h1 id="appTitle" style="cursor: default; user-select: none;">
-          <span class="app-icon">🔐</span>
-          WireSocket
-        </h1>
-        <p class="vpn-status-text" id="statusText"></p>
-      </div>
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <button class="settings-btn" id="settingsBtn" onclick="openSettings()" title="Settings">⚙️</button>
-        <div class="backend-indicator" id="backendIndicator" title="Backend service status"></div>
-      </div>
-    </div>
-
-    <!-- Loading View -->
-    <div id="loadingView" class="loading-view">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Starting VPN Service...</div>
-      <div class="loading-subtext">This may require administrator permission</div>
-    </div>
-
-    <!-- Login Form -->
-    <div id="loginForm" class="hidden">
-      <div class="form-group">
-        <label for="serverAddress">Server Address</label>
-        <input type="text" id="serverAddress" placeholder="vpn.example.com" onblur="checkSSOProviders()">
-      </div>
-
-      <!-- SSO Providers (shown if server supports SSO) -->
-      <div id="ssoProviders" class="hidden" style="margin-bottom: 15px;">
-        <div style="text-align: center; color: #666; font-size: 12px; margin-bottom: 10px;">Sign in with</div>
-        <div id="ssoButtonsContainer" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;"></div>
-        <div style="display: flex; align-items: center; margin: 15px 0;">
-          <div style="flex: 1; height: 1px; background: #e0e0e0;"></div>
-          <span style="padding: 0 15px; color: #999; font-size: 12px;">or use local account</span>
-          <div style="flex: 1; height: 1px; background: #e0e0e0;"></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">W</div>
+        <div>
+          <div class="brand-name">WireSocket</div>
+          <div class="brand-subtitle">VPN Client</div>
         </div>
       </div>
 
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" id="username" placeholder="Enter your username">
+      <div class="service-row">
+        <span class="service-label">Backend Service</span>
+        <span class="status-dot connecting" id="backendIndicator"></span>
       </div>
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" placeholder="Enter your password">
-      </div>
-      <div class="checkbox-group">
-        <label class="checkbox-label">
-          <input type="checkbox" id="rememberMe">
-          Remember credentials
-        </label>
-      </div>
-      <button class="btn btn-primary" id="connectBtn" onclick="connect()">
-        Connect to VPN
-      </button>
-      <div id="errorMessage" class="error-message hidden"></div>
-    </div>
 
-    <!-- Connected View -->
-    <div id="connectedView" class="hidden">
-      <div class="status-box">
-        <div class="status-item">
-          <span class="status-label">Server</span>
-          <span class="status-value" id="connectedServer">-</span>
-        </div>
-        <div class="status-item">
-          <span class="status-label">Your IP</span>
-          <span class="status-value" id="assignedIP">-</span>
-        </div>
-        <div class="status-item">
-          <span class="status-label">Connected Since</span>
-          <span class="status-value" id="connectedSince">-</span>
-        </div>
-        <div class="traffic-stats">
-          <div class="traffic-card">
-            <div class="traffic-label">Download</div>
-            <div class="traffic-value" id="rxBytes">0 B</div>
+      <nav class="nav" aria-label="Application sections">
+        <button class="nav-button active" data-view="connection" onclick="switchView('connection')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4.5-2.9 7.9-7 9-4.1-1.1-7-4.5-7-9V7l7-4z"/><path d="M9 12l2 2 4-5"/></svg>
+          Connection
+        </button>
+        <button class="nav-button" data-view="routes" onclick="switchView('routes')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10"/><path d="M4 17h10"/><path d="M16 7l4 5-4 5"/></svg>
+          Routes
+        </button>
+        <button class="nav-button" data-view="account" onclick="switchView('account')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
+          Account
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        WireSocket 0.10.3
+      </div>
+    </aside>
+
+    <main class="content">
+      <section id="view-connection" class="view active">
+        <div class="view-header">
+          <div>
+            <h1>VPN Connection</h1>
+            <div class="header-note" id="statusText">Starting VPN service</div>
           </div>
-          <div class="traffic-card">
-            <div class="traffic-label">Upload</div>
-            <div class="traffic-value" id="txBytes">0 B</div>
+          <div class="badge connecting" id="connectionBadge">Starting</div>
+        </div>
+
+        <div class="service-banner" id="serviceBanner">
+          <div class="spinner"></div>
+          <div id="serviceBannerText">Starting the local VPN service. Administrator permission may be required.</div>
+        </div>
+
+        <div id="loginForm" class="section hidden">
+          <div class="section-header">Server Login</div>
+          <div class="section-body">
+            <div class="form-grid">
+              <div class="form-row">
+                <label class="form-label" for="serverAddress">Server Address</label>
+                <div class="field-cell"><input type="text" id="serverAddress" placeholder="vpn.example.com" onblur="checkSSOProviders()"></div>
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="username">Username</label>
+                <div class="field-cell"><input type="text" id="username" placeholder="Username"></div>
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="password">Password</label>
+                <div class="field-cell"><input type="password" id="password" placeholder="Password"></div>
+              </div>
+            </div>
+
+            <div id="ssoProviders" class="sso-block hidden">
+              <div class="sso-title">Single sign-on providers</div>
+              <div class="sso-buttons" id="ssoButtonsContainer"></div>
+            </div>
+
+            <label class="checkbox-line">
+              <input type="checkbox" id="rememberMe">
+              Remember credentials on this computer
+            </label>
+
+            <div class="button-row">
+              <button class="button primary" id="connectBtn" onclick="connect()">Connect</button>
+            </div>
+            <div id="errorMessage" class="message error"></div>
           </div>
         </div>
-      </div>
 
-      <button class="btn btn-danger" style="margin-top: 15px;" onclick="disconnect()">
-        Disconnect
-      </button>
-      <div id="connectedError" class="error-message hidden"></div>
-    </div>
+        <div id="connectedView" class="section hidden">
+          <div class="section-header">Current Session</div>
+          <div class="section-body">
+            <div class="status-grid">
+              <div class="status-cell">
+                <div class="status-label">Server</div>
+                <div class="status-value" id="connectedServer">-</div>
+              </div>
+              <div class="status-cell">
+                <div class="status-label">Assigned IP</div>
+                <div class="status-value" id="assignedIP">-</div>
+              </div>
+              <div class="status-cell">
+                <div class="status-label">Connected Since</div>
+                <div class="status-value" id="connectedSince">-</div>
+              </div>
+              <div class="status-cell">
+                <div class="status-label">State</div>
+                <div class="status-value" id="sessionState">Connected</div>
+              </div>
+            </div>
 
-    <!-- Settings Modal -->
-    <div id="settingsModal" class="modal-overlay hidden" onclick="closeSettingsOnOverlay(event)">
-      <div class="modal" onclick="event.stopPropagation()">
-        <div class="modal-header">
-          <h2>Settings</h2>
-          <button class="modal-close" onclick="closeSettings()">&times;</button>
+            <div class="traffic-row">
+              <div class="traffic-card">
+                <div class="status-label">Download</div>
+                <div class="traffic-value" id="rxBytes">0 B</div>
+              </div>
+              <div class="traffic-card">
+                <div class="status-label">Upload</div>
+                <div class="traffic-value" id="txBytes">0 B</div>
+              </div>
+            </div>
+
+            <div class="button-row">
+              <button class="button danger" onclick="disconnect()">Disconnect</button>
+            </div>
+            <div id="connectedError" class="message error"></div>
+          </div>
         </div>
-        <div class="modal-tabs">
-          <button class="modal-tab active" onclick="switchTab(event, 'routes')">Routes</button>
-          <button class="modal-tab" onclick="switchTab(event, 'password')">Password</button>
+      </section>
+
+      <section id="view-routes" class="view">
+        <div class="view-header">
+          <div>
+            <h1>Routes</h1>
+            <div class="header-note">Disable routes that should bypass the VPN tunnel.</div>
+          </div>
         </div>
-        <div class="tab-content">
-          <!-- Routes Tab -->
-          <div id="tab-routes" class="tab-pane active">
-            <p style="font-size: 12px; color: #666; margin: 0 0 10px 0;">
-              Uncheck routes to exclude them from VPN tunnel.
-            </p>
-            <div style="margin-bottom: 8px;">
-              <input type="text" id="routeSearch" placeholder="Search CIDR..." oninput="filterRoutes()" style="width: 100%; padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px;">
+
+        <div class="section">
+          <div class="section-header">Route Selection</div>
+          <div class="section-body">
+            <div class="toolbar">
+              <input type="text" id="routeSearch" placeholder="Search CIDR" oninput="filterRoutes()">
+              <button class="button" onclick="loadRouteSettings()">Refresh</button>
             </div>
             <div id="routeList" class="route-list">
-              <div class="empty-state">Connect to a server to see available routes</div>
+              <div class="empty-state">Connect to a server to see available routes.</div>
             </div>
-            <div id="routeMessage" class="hidden"></div>
-          </div>
-
-          <!-- Password Tab -->
-          <div id="tab-password" class="tab-pane">
-            <div class="form-group" style="margin-bottom: 10px;">
-              <label for="currentPassword" style="margin-bottom: 4px;">Current Password</label>
-              <input type="password" id="currentPassword" placeholder="Enter current password">
-            </div>
-            <div class="form-group" style="margin-bottom: 10px;">
-              <label for="newPassword" style="margin-bottom: 4px;">New Password</label>
-              <input type="password" id="newPassword" placeholder="At least 8 characters">
-            </div>
-            <div class="form-group" style="margin-bottom: 10px;">
-              <label for="confirmPassword" style="margin-bottom: 4px;">Confirm New Password</label>
-              <input type="password" id="confirmPassword" placeholder="Confirm new password">
-            </div>
-            <button class="btn btn-primary btn-small" onclick="changePassword()" id="changePasswordBtn">
-              Change Password
-            </button>
-            <div id="passwordMessage" class="hidden"></div>
+            <div id="routeMessage" class="message"></div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section id="view-account" class="view">
+        <div class="view-header">
+          <div>
+            <h1>Account</h1>
+            <div class="header-note">Change the password for the current WireSocket server account.</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">Password</div>
+          <div class="section-body">
+            <div class="form-grid">
+              <div class="form-row">
+                <label class="form-label" for="currentPassword">Current Password</label>
+                <div class="field-cell"><input type="password" id="currentPassword" placeholder="Current password"></div>
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="newPassword">New Password</label>
+                <div class="field-cell"><input type="password" id="newPassword" placeholder="At least 8 characters"></div>
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="confirmPassword">Confirm Password</label>
+                <div class="field-cell"><input type="password" id="confirmPassword" placeholder="Confirm new password"></div>
+              </div>
+            </div>
+            <div class="button-row">
+              <button class="button primary" onclick="changePassword()" id="changePasswordBtn">Change Password</button>
+            </div>
+            <div id="passwordMessage" class="message"></div>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
 
   <script>
+    const DEFAULT_API_BASE = 'http://127.0.0.1:41945';
+    const tauri = window.__TAURI__;
+    const invoke = tauri?.core?.invoke;
+    const listen = tauri?.event?.listen;
+
+    const nativeAPI = invoke ? {
+      connect: (credentials) => invoke('connect', { credentials }),
+      disconnect: () => invoke('disconnect'),
+      getStatus: () => invoke('get_status'),
+      checkService: () => invoke('check_service'),
+      updateTrayStatus: (isConnected) => invoke('update_tray_status', { isConnected }),
+      onServiceStatus: (callback) => listen('service-status', event => callback(event.payload)),
+      activateDevTools: () => invoke('activate_dev_tools'),
+      getRouteSettings: () => invoke('get_route_settings'),
+      updateRouteSettings: (excludedRoutes) => invoke('update_route_settings', { excludedRoutes }),
+      changePassword: (data) => invoke('change_password', { data }),
+      updateTitle: (serverAddress) => invoke('update_title', { serverAddress }),
+      ssoGetProviders: (serverAddress) => invoke('sso_get_providers', { serverAddress }),
+      ssoLogin: (serverAddress, providerId) => invoke('sso_login', { serverAddress, providerId }),
+      ssoConnectWithToken: (serverAddress, token) => invoke('sso_connect_with_token', { serverAddress, token }),
+      onSSOCallback: (callback) => listen('sso-callback', event => callback(event.payload)),
+    } : {
+      connect: (credentials) => fetchJson('/api/connect', { method: 'POST', body: credentials }),
+      disconnect: () => fetchJson('/api/disconnect', { method: 'POST', body: {} }),
+      getStatus: () => fetchJson('/api/status'),
+      checkService: async () => {
+        try {
+          const res = await fetch(DEFAULT_API_BASE + '/health');
+          return res.ok;
+        } catch {
+          return false;
+        }
+      },
+      updateTrayStatus: async () => ({ success: true }),
+      onServiceStatus: () => {},
+      activateDevTools: async () => ({ success: true }),
+      getRouteSettings: () => fetchJson('/api/routes/settings'),
+      updateRouteSettings: (excludedRoutes) => fetchJson('/api/routes/settings', { method: 'PUT', body: { excluded_routes: excludedRoutes } }),
+      changePassword: (data) => fetchJson('/api/change-password', { method: 'POST', body: data }),
+      updateTitle: async () => ({ success: true }),
+      ssoGetProviders: async (serverAddress) => {
+        try {
+          const res = await fetch(serverAddress + '/api/auth/providers');
+          return { success: res.ok, data: await res.json() };
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
+      },
+      ssoLogin: async (serverAddress, providerId) => {
+        const callbackUrl = 'wiresocket://auth/callback';
+        window.open(`${serverAddress}/api/auth/sso/${providerId}?redirect_uri=${encodeURIComponent(callbackUrl)}`);
+        return { success: true };
+      },
+      ssoConnectWithToken: (serverAddress, token) => fetchJson('/api/connect', { method: 'POST', body: { server_address: serverAddress, tunnel_url: serverAddress, token } }),
+      onSSOCallback: () => {},
+    };
+
+    async function fetchJson(path, options = {}) {
+      try {
+        const response = await fetch(DEFAULT_API_BASE + path, {
+          method: options.method || 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          body: options.body ? JSON.stringify(options.body) : undefined,
+        });
+        const data = await response.json().catch(() => ({}));
+        return response.ok ? { success: true, data } : { success: false, error: data.error || response.statusText };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+
     const backendIndicator = document.getElementById('backendIndicator');
     const statusText = document.getElementById('statusText');
-    const loadingView = document.getElementById('loadingView');
+    const connectionBadge = document.getElementById('connectionBadge');
+    const serviceBanner = document.getElementById('serviceBanner');
+    const serviceBannerText = document.getElementById('serviceBannerText');
     const loginForm = document.getElementById('loginForm');
     const connectedView = document.getElementById('connectedView');
     const errorMessage = document.getElementById('errorMessage');
@@ -545,17 +826,25 @@
     let backendReady = false;
     let currentRoutes = [];
     let excludedRoutes = [];
+    let lastCheckedServer = '';
+    let ssoCheckTimeout = null;
 
-    // Listen for service status from main process
-    if (window.electronAPI && window.electronAPI.onServiceStatus) {
-      window.electronAPI.onServiceStatus((status) => {
-        if (status.running) {
-          onBackendReady();
-        }
-      });
+    nativeAPI.onServiceStatus((status) => {
+      if (status.running) onBackendReady();
+      else onBackendDown();
+    });
+
+    function switchView(view) {
+      document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === 'view-' + view));
+      document.querySelectorAll('.nav-button').forEach(el => el.classList.toggle('active', el.dataset.view === view));
+      if (view === 'routes') loadRouteSettings();
     }
 
-    // Load saved credentials
+    function setBadge(text, kind = '') {
+      connectionBadge.textContent = text;
+      connectionBadge.className = 'badge' + (kind ? ' ' + kind : '');
+    }
+
     function loadSavedCredentials() {
       const savedServer = localStorage.getItem('wiresocket_server');
       const savedUsername = localStorage.getItem('wiresocket_username');
@@ -568,17 +857,13 @@
       document.getElementById('rememberMe').checked = savedRemember;
     }
 
-    // Save credentials
     function saveCredentials(server, username, password) {
       const remember = document.getElementById('rememberMe').checked;
       localStorage.setItem('wiresocket_server', server);
       localStorage.setItem('wiresocket_username', username);
       localStorage.setItem('wiresocket_remember', remember.toString());
-      if (remember) {
-        localStorage.setItem('wiresocket_password', password);
-      } else {
-        localStorage.removeItem('wiresocket_password');
-      }
+      if (remember) localStorage.setItem('wiresocket_password', password);
+      else localStorage.removeItem('wiresocket_password');
     }
 
     async function waitForBackend() {
@@ -587,11 +872,9 @@
 
       let attempts = 0;
       const maxAttempts = 30;
-
       const checkBackend = async () => {
         try {
-          const isAvailable = await window.electronAPI.checkService();
-          if (isAvailable) {
+          if (await nativeAPI.checkService()) {
             onBackendReady();
             return;
           }
@@ -603,11 +886,10 @@
         if (attempts < maxAttempts) {
           setTimeout(checkBackend, 1000);
         } else {
-          loadingView.innerHTML = `
-            <div style="color: #e74c3c; font-size: 40px; margin-bottom: 15px;">⚠️</div>
-            <div class="loading-text" style="color: #e74c3c;">Failed to start VPN service</div>
-            <div class="loading-subtext">Please restart the application</div>
-          `;
+          serviceBannerText.textContent = 'Failed to start the VPN service. Restart the app or install the service manually.';
+          backendIndicator.classList.remove('connecting');
+          setBadge('Service unavailable', 'error');
+          statusText.textContent = 'Backend service unavailable';
         }
       };
 
@@ -618,63 +900,47 @@
       backendReady = true;
       backendIndicator.classList.remove('connecting');
       backendIndicator.classList.add('online');
-      loadingView.classList.add('hidden');
+      serviceBanner.classList.add('hidden');
+      statusText.textContent = 'Service online';
+      setBadge('Ready');
 
       loadSavedCredentials();
       checkStatus();
       startHealthCheck();
     }
 
-    // Periodic health check for backend service
     function startHealthCheck() {
-      if (healthCheckInterval) {
-        clearInterval(healthCheckInterval);
-      }
+      if (healthCheckInterval) clearInterval(healthCheckInterval);
       healthCheckInterval = setInterval(async () => {
         try {
-          const isAvailable = await window.electronAPI.checkService();
+          const isAvailable = await nativeAPI.checkService();
           if (isAvailable) {
-            if (!backendReady) {
-              backendReady = true;
-              backendIndicator.classList.remove('connecting');
-              backendIndicator.classList.add('online');
-              loadingView.classList.add('hidden');
-              checkStatus();
-            }
+            if (!backendReady) onBackendReady();
           } else {
             onBackendDown();
           }
-        } catch (e) {
-          console.log('Health check failed:', e);
+        } catch {
           onBackendDown();
         }
-      }, 10000); // Check every 10 seconds
+      }, 10000);
     }
 
     function onBackendDown() {
-      if (backendReady) {
-        backendReady = false;
-        backendIndicator.classList.remove('online');
-        backendIndicator.classList.remove('connecting');
-        stopStatusCheck();
-        // Show loading view with error state
-        loadingView.innerHTML = `
-          <div style="color: #e74c3c; font-size: 40px; margin-bottom: 15px;">⚠️</div>
-          <div class="loading-text" style="color: #e74c3c;">Backend service unavailable</div>
-          <div class="loading-subtext">Attempting to reconnect...</div>
-        `;
-        loadingView.classList.remove('hidden');
-        loginForm.classList.add('hidden');
-        connectedView.classList.add('hidden');
-      }
+      if (!backendReady) return;
+      backendReady = false;
+      backendIndicator.classList.remove('online', 'connecting');
+      stopStatusCheck();
+      serviceBanner.classList.remove('hidden');
+      serviceBannerText.textContent = 'Backend service unavailable. Attempting to reconnect.';
+      loginForm.classList.add('hidden');
+      connectedView.classList.add('hidden');
+      statusText.textContent = 'Backend service unavailable';
+      setBadge('Service unavailable', 'error');
     }
 
-    // Normalize server URL - add https:// if no scheme
     function normalizeServerUrl(url) {
       url = url.trim();
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://' + url;
-      }
+      if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
       return url.replace(/\/+$/, '');
     }
 
@@ -684,79 +950,73 @@
       const password = document.getElementById('password').value;
 
       if (!serverAddress || !username || !password) {
-        showError('Please fill in all fields');
+        showMessage(errorMessage, 'Please fill in all fields', 'error');
         return;
       }
 
-      // Store the original input (without protocol) for display
       const displayServer = serverAddress;
-      // Normalize for API call
       const apiServer = normalizeServerUrl(serverAddress);
-
       connectBtn.disabled = true;
-      connectBtn.textContent = 'Connecting...';
-      hideError();
+      connectBtn.textContent = 'Connecting';
+      hideMessage(errorMessage);
+      setBadge('Connecting', 'connecting');
+      statusText.textContent = 'Connecting...';
 
-      // Retry logic for when service is starting up
       const maxRetries = 3;
       const retryDelay = 1000;
       let lastError = null;
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          const result = await window.electronAPI.connect({
+          const result = await nativeAPI.connect({
             server_address: apiServer,
             tunnel_url: apiServer,
-            username: username,
-            password: password
+            username,
+            password
           });
 
           if (!result.success) {
             lastError = result.error || 'Connection failed';
-            // If it's a service connection error, retry
-            if (lastError.includes('ECONNREFUSED') || lastError.includes('connect') || lastError.includes('backend')) {
-              if (attempt < maxRetries) {
-                console.log(`Connection attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                continue;
-              }
+            if (attempt < maxRetries && /ECONNREFUSED|connect|backend/i.test(lastError)) {
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+              continue;
             }
-            showError(lastError);
-            connectBtn.disabled = false;
-            connectBtn.textContent = 'Connect to VPN';
+            showMessage(errorMessage, lastError, 'error');
+            resetConnectButton();
             return;
           }
 
-          // Save original input (without protocol)
           saveCredentials(displayServer, username, password);
-
           showConnectedView();
           startStatusCheck();
           return;
-
         } catch (e) {
           lastError = e.message;
           if (attempt < maxRetries) {
-            console.log(`Connection attempt ${attempt} failed with exception, retrying in ${retryDelay}ms...`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             continue;
           }
         }
       }
 
-      showError('Connection failed: ' + lastError);
+      showMessage(errorMessage, 'Connection failed: ' + lastError, 'error');
+      resetConnectButton();
+    }
+
+    function resetConnectButton() {
       connectBtn.disabled = false;
-      connectBtn.textContent = 'Connect to VPN';
+      connectBtn.textContent = 'Connect';
+      setBadge('Ready');
+      statusText.textContent = 'Service online';
     }
 
     async function disconnect() {
       try {
-        await window.electronAPI.disconnect();
+        await nativeAPI.disconnect();
         stopStatusCheck();
         showLoginForm();
       } catch (e) {
-        console.error('Disconnect failed:', e);
-        showConnectedError('Disconnect failed: ' + e.message);
+        showMessage(document.getElementById('connectedError'), 'Disconnect failed: ' + e.message, 'error');
       }
     }
 
@@ -764,19 +1024,17 @@
       if (!backendReady) return;
 
       try {
-        const result = await window.electronAPI.getStatus();
-
+        const result = await nativeAPI.getStatus();
         if (result.success && result.data) {
           const status = result.data;
-
           if (status.state === 'connected') {
             showConnectedView();
             updateConnectedInfo(status);
             startStatusCheck();
-          } else if (status.state === 'connecting') {
+          } else if (status.state === 'connecting' || status.state === 'reconnecting') {
             showConnectedView();
-            statusText.textContent = 'Connecting...';
-            statusText.style.color = '#f39c12';
+            statusText.textContent = status.state === 'reconnecting' ? 'Reconnecting...' : 'Connecting...';
+            setBadge(statusText.textContent.replace('...', ''), 'connecting');
             startStatusCheck();
           } else {
             showLoginForm();
@@ -784,8 +1042,7 @@
         } else {
           showLoginForm();
         }
-      } catch (e) {
-        console.error('Status check failed:', e);
+      } catch {
         showLoginForm();
       }
     }
@@ -793,18 +1050,12 @@
     function showLoginForm() {
       loginForm.classList.remove('hidden');
       connectedView.classList.add('hidden');
-      statusText.textContent = '';
+      statusText.textContent = backendReady ? 'Service online' : 'Backend service unavailable';
+      setBadge(backendReady ? 'Ready' : 'Service unavailable', backendReady ? '' : 'error');
       connectBtn.disabled = false;
-      connectBtn.textContent = 'Connect to VPN';
-
-      if (window.electronAPI && window.electronAPI.updateTrayStatus) {
-        window.electronAPI.updateTrayStatus(false);
-      }
-
-      // Reset window title when disconnected
-      if (window.electronAPI && window.electronAPI.updateTitle) {
-        window.electronAPI.updateTitle(null);
-      }
+      connectBtn.textContent = 'Connect';
+      nativeAPI.updateTrayStatus(false);
+      nativeAPI.updateTitle(null);
     }
 
     function showConnectedView() {
@@ -814,28 +1065,19 @@
 
     function updateConnectedInfo(status) {
       statusText.textContent = 'Connected';
-      statusText.style.color = '#2ecc71';
+      setBadge('Connected', 'connected');
+      nativeAPI.updateTrayStatus(true);
 
-      if (window.electronAPI && window.electronAPI.updateTrayStatus) {
-        window.electronAPI.updateTrayStatus(true);
-      }
-
-      // Show server without protocol
       const savedServer = localStorage.getItem('wiresocket_server') || '-';
       const displayServer = savedServer.replace(/^https?:\/\//, '');
       document.getElementById('connectedServer').textContent = displayServer;
-
-      // Update window title and tray tooltip with server address
-      if (window.electronAPI && window.electronAPI.updateTitle) {
-        window.electronAPI.updateTitle(displayServer);
-      }
+      nativeAPI.updateTitle(displayServer);
 
       document.getElementById('assignedIP').textContent = status.assigned_ip || '-';
-
+      document.getElementById('sessionState').textContent = status.state || 'connected';
       if (status.connected_since) {
         document.getElementById('connectedSince').textContent = new Date(status.connected_since).toLocaleString();
       }
-
       document.getElementById('rxBytes').textContent = formatBytes(status.rx_bytes || 0);
       document.getElementById('txBytes').textContent = formatBytes(status.tx_bytes || 0);
     }
@@ -844,43 +1086,32 @@
       if (bytes === 0) return '0 B';
       const k = 1024;
       const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
       return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
 
-    function showError(message) {
-      errorMessage.textContent = message;
-      errorMessage.classList.remove('hidden');
-      setTimeout(() => errorMessage.classList.add('hidden'), 5000);
-    }
-
-    function hideError() {
-      errorMessage.classList.add('hidden');
-    }
-
-    function showConnectedError(message) {
-      const el = document.getElementById('connectedError');
+    function showMessage(el, message, type) {
       el.textContent = message;
-      el.classList.remove('hidden');
-      setTimeout(() => el.classList.add('hidden'), 5000);
+      el.className = 'message show ' + type;
+    }
+
+    function hideMessage(el) {
+      el.className = 'message';
+      el.textContent = '';
     }
 
     function startStatusCheck() {
-      if (statusCheckInterval) {
-        clearInterval(statusCheckInterval);
-      }
+      if (statusCheckInterval) clearInterval(statusCheckInterval);
       statusCheckInterval = setInterval(async () => {
         try {
-          const result = await window.electronAPI.getStatus();
+          const result = await nativeAPI.getStatus();
           if (result.success && result.data) {
             if (result.data.state === 'connected') {
               updateConnectedInfo(result.data);
             } else if (result.data.state === 'disconnected' || result.data.state === 'failed') {
               stopStatusCheck();
               showLoginForm();
-              if (result.data.error) {
-                showError(result.data.error);
-              }
+              if (result.data.error) showMessage(errorMessage, result.data.error, 'error');
             }
           }
         } catch (e) {
@@ -896,78 +1127,33 @@
       }
     }
 
-    // Dev tools activation
     let devToolsClickCount = 0;
-    let devToolsClickTimer = null;
-    const appTitle = document.getElementById('appTitle');
-
-    appTitle.addEventListener('click', () => {
+    document.querySelector('.brand').addEventListener('click', () => {
       devToolsClickCount++;
-      if (devToolsClickTimer) clearTimeout(devToolsClickTimer);
-      devToolsClickTimer = setTimeout(() => { devToolsClickCount = 0; }, 2000);
-
+      setTimeout(() => { devToolsClickCount = 0; }, 2000);
       if (devToolsClickCount >= 4) {
         devToolsClickCount = 0;
-        if (window.electronAPI && window.electronAPI.activateDevTools) {
-          window.electronAPI.activateDevTools();
-        }
+        nativeAPI.activateDevTools();
       }
     });
 
-    // Settings modal functions
-    function switchTab(event, tabName) {
-      event.stopPropagation();
-
-      document.querySelectorAll('.modal-tab').forEach(tab => {
-        tab.classList.remove('active');
-      });
-      event.target.classList.add('active');
-
-      document.querySelectorAll('.tab-pane').forEach(pane => {
-        pane.classList.remove('active');
-      });
-      document.getElementById('tab-' + tabName).classList.add('active');
-    }
-
-    function openSettings() {
-      document.getElementById('settingsModal').classList.remove('hidden');
-      loadRouteSettings();
-      document.getElementById('routeSearch').value = '';
-      document.getElementById('currentPassword').value = '';
-      document.getElementById('newPassword').value = '';
-      document.getElementById('confirmPassword').value = '';
-      hidePasswordMessage();
-      hideRouteMessage();
-    }
-
-    function closeSettings() {
-      document.getElementById('settingsModal').classList.add('hidden');
-    }
-
-    function closeSettingsOnOverlay(event) {
-      if (event.target.id === 'settingsModal') closeSettings();
-    }
-
     async function loadRouteSettings() {
       try {
-        if (window.electronAPI && window.electronAPI.getRouteSettings) {
-          const result = await window.electronAPI.getRouteSettings();
-          if (result.success) {
-            currentRoutes = result.data.available_routes || [];
-            excludedRoutes = result.data.excluded_routes || [];
-            renderRouteList();
-          }
+        const result = await nativeAPI.getRouteSettings();
+        if (result.success) {
+          currentRoutes = result.data.available_routes || [];
+          excludedRoutes = result.data.excluded_routes || [];
+          renderRouteList();
         }
       } catch (e) {
-        console.error('Failed to load route settings:', e);
+        showMessage(document.getElementById('routeMessage'), 'Failed to load routes: ' + e.message, 'error');
       }
     }
 
     function renderRouteList(searchTerm = '') {
       const routeList = document.getElementById('routeList');
-
       if (currentRoutes.length === 0) {
-        routeList.innerHTML = '<div class="empty-state">Connect to a server to see available routes</div>';
+        routeList.innerHTML = '<div class="empty-state">Connect to a server to see available routes.</div>';
         return;
       }
 
@@ -976,62 +1162,37 @@
         : currentRoutes;
 
       if (filteredRoutes.length === 0) {
-        routeList.innerHTML = '<div class="empty-state">No matching routes</div>';
+        routeList.innerHTML = '<div class="empty-state">No matching routes.</div>';
         return;
       }
 
-      let html = '';
-      filteredRoutes.forEach((route, index) => {
+      routeList.innerHTML = filteredRoutes.map((route, index) => {
         const isExcluded = excludedRoutes.includes(route);
-        html += `
+        return `
           <div class="route-item">
             <input type="checkbox" id="route-${index}" ${!isExcluded ? 'checked' : ''} onchange="toggleRoute('${route}', this.checked)">
             <label for="route-${index}">${route}</label>
           </div>
         `;
-      });
-
-      routeList.innerHTML = html;
+      }).join('');
     }
 
     function filterRoutes() {
-      const searchTerm = document.getElementById('routeSearch').value;
-      renderRouteList(searchTerm);
+      renderRouteList(document.getElementById('routeSearch').value);
     }
 
     async function toggleRoute(route, isEnabled) {
-      if (isEnabled) {
-        excludedRoutes = excludedRoutes.filter(r => r !== route);
-      } else {
-        if (!excludedRoutes.includes(route)) {
-          excludedRoutes.push(route);
-        }
-      }
+      if (isEnabled) excludedRoutes = excludedRoutes.filter(r => r !== route);
+      else if (!excludedRoutes.includes(route)) excludedRoutes.push(route);
 
+      const msg = document.getElementById('routeMessage');
       try {
-        if (window.electronAPI && window.electronAPI.updateRouteSettings) {
-          const result = await window.electronAPI.updateRouteSettings(excludedRoutes);
-          if (result.success) {
-            showRouteMessage('Routes updated', 'success');
-          } else {
-            showRouteMessage(result.error || 'Failed to update routes', 'error');
-          }
-        }
-      } catch (e) {
-        showRouteMessage('Failed to update routes', 'error');
+        const result = await nativeAPI.updateRouteSettings(excludedRoutes);
+        if (result.success) showMessage(msg, 'Routes updated', 'success');
+        else showMessage(msg, result.error || 'Failed to update routes', 'error');
+      } catch {
+        showMessage(msg, 'Failed to update routes', 'error');
       }
-    }
-
-    function showRouteMessage(message, type) {
-      const el = document.getElementById('routeMessage');
-      el.textContent = message;
-      el.className = type === 'success' ? 'success-message' : 'error-message';
-      el.classList.remove('hidden');
-      setTimeout(() => el.classList.add('hidden'), 2000);
-    }
-
-    function hideRouteMessage() {
-      document.getElementById('routeMessage').classList.add('hidden');
     }
 
     async function changePassword() {
@@ -1039,38 +1200,39 @@
       const newPassword = document.getElementById('newPassword').value;
       const confirmPassword = document.getElementById('confirmPassword').value;
       const btn = document.getElementById('changePasswordBtn');
+      const msg = document.getElementById('passwordMessage');
 
       if (!currentPassword || !newPassword || !confirmPassword) {
-        showPasswordMessage('Please fill in all fields', 'error');
+        showMessage(msg, 'Please fill in all fields', 'error');
         return;
       }
       if (newPassword.length < 8) {
-        showPasswordMessage('New password must be at least 8 characters', 'error');
+        showMessage(msg, 'New password must be at least 8 characters', 'error');
         return;
       }
       if (newPassword !== confirmPassword) {
-        showPasswordMessage('Passwords do not match', 'error');
+        showMessage(msg, 'Passwords do not match', 'error');
         return;
       }
 
       const serverAddress = localStorage.getItem('wiresocket_server');
       if (!serverAddress) {
-        showPasswordMessage('Please connect to a server first', 'error');
+        showMessage(msg, 'Connect to a server first', 'error');
         return;
       }
 
       btn.disabled = true;
-      btn.textContent = 'Changing...';
+      btn.textContent = 'Changing';
 
       try {
-        const result = await window.electronAPI.changePassword({
+        const result = await nativeAPI.changePassword({
           server_address: normalizeServerUrl(serverAddress),
           current_password: currentPassword,
           new_password: newPassword
         });
 
         if (result.success) {
-          showPasswordMessage('Password changed successfully!', 'success');
+          showMessage(msg, 'Password changed successfully', 'success');
           if (localStorage.getItem('wiresocket_remember') === 'true') {
             localStorage.setItem('wiresocket_password', newPassword);
           }
@@ -1078,35 +1240,16 @@
           document.getElementById('newPassword').value = '';
           document.getElementById('confirmPassword').value = '';
         } else {
-          showPasswordMessage(result.error || 'Failed to change password', 'error');
+          showMessage(msg, result.error || 'Failed to change password', 'error');
         }
       } catch (e) {
-        showPasswordMessage('Failed: ' + e.message, 'error');
+        showMessage(msg, 'Failed: ' + e.message, 'error');
       }
 
       btn.disabled = false;
       btn.textContent = 'Change Password';
     }
 
-    function showPasswordMessage(message, type) {
-      const el = document.getElementById('passwordMessage');
-      el.textContent = message;
-      el.className = type === 'success' ? 'success-message' : 'error-message';
-      el.classList.remove('hidden');
-    }
-
-    function hidePasswordMessage() {
-      document.getElementById('passwordMessage').classList.add('hidden');
-    }
-
-    // ======== SSO Functions ========
-
-    let ssoProviders = [];
-    let lastCheckedServer = '';
-    let ssoCheckTimeout = null;
-    let pendingSSOToken = null;
-
-    // Check for SSO providers when server address changes
     async function checkSSOProviders() {
       let serverAddress = document.getElementById('serverAddress').value.trim();
       if (!serverAddress) {
@@ -1114,32 +1257,26 @@
         return;
       }
 
-      // Don't re-check the same server
       const normalizedServer = normalizeServerUrl(serverAddress);
       if (normalizedServer === lastCheckedServer) return;
       lastCheckedServer = normalizedServer;
 
-      // Debounce
       if (ssoCheckTimeout) clearTimeout(ssoCheckTimeout);
       ssoCheckTimeout = setTimeout(async () => {
         try {
-          if (window.electronAPI && window.electronAPI.ssoGetProviders) {
-            const result = await window.electronAPI.ssoGetProviders(normalizedServer);
-            if (result.success && result.data && result.data.providers) {
-              // Filter out local provider and check for SSO providers
-              ssoProviders = result.data.providers.filter(p => p.type !== 'local');
-              if (ssoProviders.length > 0) {
-                renderSSOProviders(ssoProviders);
-                showSSOProviders();
-              } else {
-                hideSSOProviders();
-              }
+          const result = await nativeAPI.ssoGetProviders(normalizedServer);
+          if (result.success && result.data && result.data.providers) {
+            const providers = result.data.providers.filter(p => p.type !== 'local');
+            if (providers.length > 0) {
+              renderSSOProviders(providers);
+              document.getElementById('ssoProviders').classList.remove('hidden');
             } else {
               hideSSOProviders();
             }
+          } else {
+            hideSSOProviders();
           }
-        } catch (e) {
-          console.log('SSO check failed:', e);
+        } catch {
           hideSSOProviders();
         }
       }, 500);
@@ -1148,115 +1285,78 @@
     function renderSSOProviders(providers) {
       const container = document.getElementById('ssoButtonsContainer');
       container.innerHTML = '';
-
       providers.forEach(provider => {
         const btn = document.createElement('button');
         btn.className = 'sso-btn';
         btn.onclick = () => startSSOLogin(provider.id);
-
-        // Get icon based on provider type/id
-        const icon = getSSOIcon(provider.id, provider.type);
-        btn.innerHTML = `${icon}<span>${provider.name}</span>`;
-
+        btn.innerHTML = `${getSSOIcon(provider.id, provider.type)}<span>${provider.name}</span>`;
         container.appendChild(btn);
       });
     }
 
     function getSSOIcon(providerId, providerType) {
-      // SVG icons for common providers
       const icons = {
-        'azure-ad': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#00a4ef" d="M11.4 0L0 4.2v9.3l11.4 9.9 12.6-4.2V9.6L11.4 0zM8.9 18.8L2.2 14V5.8l6.7 3.7v9.3zm9.9-4.8l-6.7 3.7V8.4l6.7-3.7v9.3z"/></svg>',
         'google': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
-        'github': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#333" d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>',
-        'gitlab': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#E24329" d="m12 22.03l4.55-14H7.45l4.55 14z"/><path fill="#FC6D26" d="M12 22.03L7.45 8.03H1.51l10.49 14z"/><path fill="#FCA326" d="M1.51 8.03l-.95 2.92c-.09.27 0 .57.23.73L12 22.03 1.51 8.03z"/><path fill="#E24329" d="M1.51 8.03h5.94L4.98.79a.38.38 0 00-.72 0L1.51 8.03z"/><path fill="#FC6D26" d="M12 22.03l4.55-14h5.94L12 22.03z"/><path fill="#FCA326" d="m22.49 8.03.95 2.92c.09.27 0 .57-.23.73L12 22.03l10.49-14z"/><path fill="#E24329" d="M22.49 8.03h-5.94l2.47-7.24a.38.38 0 01.72 0l2.75 7.24z"/></svg>',
-        'okta': '<svg class="sso-icon" viewBox="0 0 24 24"><circle fill="#007DC1" cx="12" cy="12" r="10"/><circle fill="#fff" cx="12" cy="12" r="4"/></svg>',
-        'keycloak': '<svg class="sso-icon" viewBox="0 0 24 24"><rect fill="#4D4D4D" width="24" height="24" rx="4"/><text x="12" y="16" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">K</text></svg>',
-        'auth0': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#EB5424" d="M21.98 7.45L19.63 0H4.38L2.02 7.45 12 24l9.98-16.55zM12 18.9L6.42 9.5 8.63 3h6.74l2.21 6.5L12 18.9z"/></svg>',
+        'github': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>',
+        'azure-ad': '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#00a4ef" d="M11.4 0L0 4.2v9.3l11.4 9.9 12.6-4.2V9.6L11.4 0zM8.9 18.8L2.2 14V5.8l6.7 3.7v9.3zm9.9-4.8l-6.7 3.7V8.4l6.7-3.7v9.3z"/></svg>'
       };
-
-      // Try to match by provider ID first, then by type
-      if (icons[providerId]) return icons[providerId];
-      if (icons[providerType]) return icons[providerType];
-
-      // Default icon for unknown providers
-      return '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="#667eea" d="M12 1a11 11 0 100 22 11 11 0 000-22zm0 5a3 3 0 110 6 3 3 0 010-6zm0 14c-2.67 0-5.02-1.35-6.4-3.4.03-2.12 4.27-3.3 6.4-3.3 2.12 0 6.37 1.18 6.4 3.3A7.96 7.96 0 0112 20z"/></svg>';
-    }
-
-    function showSSOProviders() {
-      document.getElementById('ssoProviders').classList.remove('hidden');
+      return icons[providerId] || icons[providerType] || '<svg class="sso-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a3 3 0 110 6 3 3 0 010-6zm0 14a7.9 7.9 0 01-5.9-2.7c.5-1.8 4-2.8 5.9-2.8s5.4 1 5.9 2.8A7.9 7.9 0 0112 20z"/></svg>';
     }
 
     function hideSSOProviders() {
       document.getElementById('ssoProviders').classList.add('hidden');
-      ssoProviders = [];
     }
 
     async function startSSOLogin(providerId) {
       const serverAddress = normalizeServerUrl(document.getElementById('serverAddress').value.trim());
       if (!serverAddress) {
-        showError('Please enter a server address');
+        showMessage(errorMessage, 'Please enter a server address', 'error');
         return;
       }
 
-      // Disable SSO buttons
       document.querySelectorAll('.sso-btn').forEach(btn => btn.disabled = true);
-
       try {
-        const result = await window.electronAPI.ssoLogin(serverAddress, providerId);
-        if (!result.success) {
-          showError(result.error || 'Failed to start SSO login');
-        }
-        // Browser will open for SSO, callback will be handled by onSSOCallback
+        const result = await nativeAPI.ssoLogin(serverAddress, providerId);
+        if (!result.success) showMessage(errorMessage, result.error || 'Failed to start SSO login', 'error');
       } catch (e) {
-        showError('SSO login failed: ' + e.message);
+        showMessage(errorMessage, 'SSO login failed: ' + e.message, 'error');
       }
 
-      // Re-enable buttons after a short delay
-      setTimeout(() => {
-        document.querySelectorAll('.sso-btn').forEach(btn => btn.disabled = false);
-      }, 2000);
+      setTimeout(() => document.querySelectorAll('.sso-btn').forEach(btn => btn.disabled = false), 2000);
     }
 
-    // Handle SSO callback from deep link
-    if (window.electronAPI && window.electronAPI.onSSOCallback) {
-      window.electronAPI.onSSOCallback(async (result) => {
-        if (result.success && result.token) {
-          // Got token from SSO, now connect to VPN
-          const serverAddress = normalizeServerUrl(document.getElementById('serverAddress').value.trim());
+    nativeAPI.onSSOCallback(async (result) => {
+      if (result.success && result.token) {
+        const serverAddress = normalizeServerUrl(document.getElementById('serverAddress').value.trim());
+        connectBtn.disabled = true;
+        connectBtn.textContent = 'Connecting';
+        hideMessage(errorMessage);
 
-          connectBtn.disabled = true;
-          connectBtn.textContent = 'Connecting...';
-          hideError();
+        try {
+          const connectResult = await nativeAPI.connect({
+            server_address: serverAddress,
+            tunnel_url: serverAddress,
+            token: result.token
+          });
 
-          try {
-            // Connect using token
-            const connectResult = await window.electronAPI.connect({
-              server_address: serverAddress,
-              tunnel_url: serverAddress,
-              token: result.token
-            });
-
-            if (connectResult.success) {
-              // Save server (not credentials for SSO)
-              localStorage.setItem('wiresocket_server', document.getElementById('serverAddress').value.trim());
-              showConnectedView();
-              startStatusCheck();
-            } else {
-              showError(connectResult.error || 'Connection failed');
-            }
-          } catch (e) {
-            showError('Connection failed: ' + e.message);
+          if (connectResult.success) {
+            localStorage.setItem('wiresocket_server', document.getElementById('serverAddress').value.trim());
+            showConnectedView();
+            startStatusCheck();
+          } else {
+            showMessage(errorMessage, connectResult.error || 'Connection failed', 'error');
           }
-
-          connectBtn.disabled = false;
-          connectBtn.textContent = 'Connect to VPN';
-        } else if (result.error) {
-          showError('SSO login failed: ' + result.error);
+        } catch (e) {
+          showMessage(errorMessage, 'Connection failed: ' + e.message, 'error');
         }
-      });
-    }
 
-    // Start waiting for backend on page load
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect';
+      } else if (result.error) {
+        showMessage(errorMessage, 'SSO login failed: ' + result.error, 'error');
+      }
+    });
+
     waitForBackend();
   </script>
 </body>

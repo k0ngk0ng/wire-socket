@@ -8,7 +8,7 @@ A cross-platform VPN solution using WireGuard over WebSockets.
 - **Zero Dependencies**: Pure Go userspace WireGuard - no kernel modules or external tools required
 - **Secure**: WireGuard encryption with WebSocket tunneling
 - **All-in-One**: Client bundles all dependencies
-- **Modern UI**: Electron desktop app with system tray
+- **Modern UI**: Tauri 2 desktop app with system tray
 - **Mobile Apps**: Native iOS and Android apps using Go SDK
 - **Auto Service Install**: Automatically installs and starts backend service with privilege escalation
 - **Admin Tools**: Web UI and `wsctl` CLI for managing users, routes, and NAT rules
@@ -67,7 +67,7 @@ wsctl route apply
 
 ### Client
 
-Download from [Releases](../../releases) or use built package in `client/dist/`.
+Download from [Releases](../../releases) or use built packages in `client/frontend/src-tauri/target/release/bundle/`.
 
 1. Launch WireSocket
 2. Enter server address (e.g., `https://vpn.example.com` or `your-server-ip:8080`)
@@ -107,7 +107,7 @@ See [docs/](docs/) for full documentation:
 
 - [SDK](sdk/README.md) - Go SDK for building custom clients
 - [Server](server/README.md) - VPN server with WireGuard
-- [Desktop Client](client/README.md) - Electron desktop app
+- [Desktop Client](client/README.md) - Tauri desktop app
 - [Android App](client/mobile/android/README.md) - Android VPN client
 - [iOS App](client/mobile/ios/README.md) - iOS VPN client (requires paid Apple Developer account)
 

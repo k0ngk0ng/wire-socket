@@ -82,6 +82,16 @@ jobs:
           cache: 'npm'
           cache-dependency-path: client/frontend/package-lock.json
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/frontend/src-tauri
+
       - name: Get version
         id: version
         run: |
@@ -89,39 +99,49 @@ jobs:
           VERSION="${VERSION#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Update package.json version
+      - name: Install dependencies
+        working-directory: client/frontend
+        run: npm ci --ignore-scripts
+
+      - name: Sync package versions
         working-directory: client/frontend
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          node -e "const pkg = require('./package.json'); pkg.version = '$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+          node scripts/sync-version.js "$VERSION"
 
-      - name: Build backend (amd64 + arm64)
+      - name: Build backend and WireGuard resources
         working-directory: client/backend
         run: |
           go mod download
           VERSION="${{ steps.version.outputs.version }}"
           mkdir -p ../frontend/resources/bin/darwin
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/darwin/wire-socket-client ./cmd/client
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/darwin/wire-socket-client-arm64 ./cmd/client
-          chmod +x ../frontend/resources/bin/darwin/*
+          OUT_DIR="$(cd ../frontend/resources/bin/darwin && pwd)"
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o "$OUT_DIR/wire-socket-client" ./cmd/client
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$VERSION" -o "$OUT_DIR/wire-socket-client-arm64" ./cmd/client
+          TMP_DIR="$(mktemp -d)"
+          git clone https://git.zx2c4.com/wireguard-go "$TMP_DIR/wireguard-go"
+          cd "$TMP_DIR/wireguard-go"
+          GOOS=darwin GOARCH=amd64 go build -o "$OUT_DIR/wireguard-go" -v
+          GOOS=darwin GOARCH=arm64 go build -o "$OUT_DIR/wireguard-go-arm64" -v
+          chmod +x "$OUT_DIR"/*
 
-      - name: Install dependencies
-        working-directory: client/frontend
-        run: npm ci --ignore-scripts
-
-      - name: Build Electron app
+      - name: Build Tauri app
         working-directory: client/frontend
         run: npm run build:ci:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Zip macOS app
+        working-directory: client/frontend/src-tauri/target/universal-apple-darwin/release/bundle/macos
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ditto -c -k --sequesterRsrc --keepParent WireSocket.app "$GITHUB_WORKSPACE/WireSocket_${VERSION}_macos_universal.zip"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: client-macos
-          path: |
-            client/dist/*.dmg
-            client/dist/*.zip
+          path: WireSocket_${{ steps.version.outputs.version }}_macos_universal.zip
 
   # Build client CLI for Linux (headless, no GUI)
   build-client-linux-cli:
@@ -165,6 +185,99 @@ jobs:
           name: client-linux-cli-${{ matrix.suffix }}
           path: client/backend/wire-socket-client-${{ matrix.suffix }}
 
+  # Build client desktop app for Linux
+  build-client-linux-desktop:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            rpm \
+            wget
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/frontend/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/frontend/src-tauri
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        working-directory: client/frontend
+        run: npm ci --ignore-scripts
+
+      - name: Sync package versions
+        working-directory: client/frontend
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node scripts/sync-version.js "$VERSION"
+
+      - name: Build backend
+        working-directory: client/backend
+        run: |
+          go mod download
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p ../frontend/resources/bin/linux
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -ldflags="-s -w -X main.Version=$VERSION" \
+            -o ../frontend/resources/bin/linux/wire-socket-client ./cmd/client
+          chmod +x ../frontend/resources/bin/linux/wire-socket-client
+          cat > ../frontend/resources/bin/linux/WIREGUARD-README.txt << 'EOF'
+          WireGuard on Linux
+          ==================
+
+          On Linux, WireSocket uses the kernel's built-in WireGuard support.
+          Required package: wireguard-tools.
+          EOF
+
+      - name: Build Tauri app
+        working-directory: client/frontend
+        run: npm run build:ci:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-linux-desktop
+          path: |
+            client/frontend/src-tauri/target/release/bundle/appimage/*.AppImage
+            client/frontend/src-tauri/target/release/bundle/deb/*.deb
+            client/frontend/src-tauri/target/release/bundle/rpm/*.rpm
+
   # Build client for Windows
   build-client-windows:
     runs-on: windows-latest
@@ -184,6 +297,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: client/frontend/package-lock.json
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/frontend/src-tauri
+
       - name: Get version
         id: version
         shell: bash
@@ -192,21 +313,30 @@ jobs:
           VERSION="${VERSION#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Update package.json version
+      - name: Install dependencies
+        working-directory: client/frontend
+        run: npm ci --ignore-scripts
+
+      - name: Sync package versions
         working-directory: client/frontend
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          node -e "const pkg = require('./package.json'); pkg.version = '$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+          node scripts/sync-version.js "$VERSION"
 
-      - name: Build backend
+      - name: Build backend and WireGuard resources
         working-directory: client/backend
         shell: bash
         run: |
           go mod download
           VERSION="${{ steps.version.outputs.version }}"
           mkdir -p ../frontend/resources/bin/win32
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o ../frontend/resources/bin/win32/wire-socket-client.exe ./cmd/client
+          OUT_DIR="$(cd ../frontend/resources/bin/win32 && pwd)"
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$VERSION" -o "$OUT_DIR/wire-socket-client.exe" ./cmd/client
+          TMP_DIR="$(mktemp -d)"
+          git clone https://git.zx2c4.com/wireguard-go "$TMP_DIR/wireguard-go"
+          cd "$TMP_DIR/wireguard-go"
+          GOOS=windows GOARCH=amd64 go build -o "$OUT_DIR/wireguard.exe" -v
 
       - name: Download wintun driver
         shell: bash
@@ -217,11 +347,7 @@ jobs:
           cp wintun/wintun/bin/amd64/wintun.dll client/frontend/resources/bin/win32/
           rm -rf wintun wintun.zip
 
-      - name: Install dependencies
-        working-directory: client/frontend
-        run: npm ci --ignore-scripts
-
-      - name: Build Electron app
+      - name: Build Tauri app
         working-directory: client/frontend
         run: npm run build:ci:win
         env:
@@ -231,12 +357,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: client-windows
-          path: client/dist/*.exe
+          path: client/frontend/src-tauri/target/release/bundle/nsis/*.exe
 
   # Create release when tag is pushed
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-server, build-client-macos, build-client-linux-cli, build-client-windows]
+    needs: [build-server, build-client-macos, build-client-linux-cli, build-client-linux-desktop, build-client-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -255,10 +381,13 @@ jobs:
           find artifacts -name 'wsctl-*' -exec cp {} release/ \;
           # Client Linux CLI binaries
           find artifacts -name 'wire-socket-client-linux-*' -exec cp {} release/ \;
-          # Client packages (macOS + Windows only)
+          # Client packages
           find artifacts -name '*.dmg' -exec cp {} release/ \;
-          find artifacts -name '*.zip' -exec cp {} release/ \;
+          find artifacts -name '*macos*.zip' -exec cp {} release/ \;
           find artifacts -name '*.exe' -exec cp {} release/ \;
+          find artifacts -name '*.AppImage' -exec cp {} release/ \;
+          find artifacts -name '*.deb' -exec cp {} release/ \;
+          find artifacts -name '*.rpm' -exec cp {} release/ \;
           ls -la release/
 
       - name: Create Release

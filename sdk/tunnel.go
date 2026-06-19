@@ -12,8 +12,8 @@ import (
 
 const (
 	// Tunnel constants
-	tunnelBufferSize  = 65535
-	tunnelTimeout     = 30 * time.Second
+	tunnelBufferSize   = 65535
+	tunnelTimeout      = 30 * time.Second
 	tunnelPingInterval = 30 * time.Second
 	tunnelPongTimeout  = 10 * time.Second
 	tunnelReadTimeout  = 45 * time.Second
@@ -30,6 +30,7 @@ type tunnelClient struct {
 	port      int
 	mu        sync.Mutex
 	connMu    sync.RWMutex
+	writeMu   sync.Mutex
 	lastPong  time.Time
 }
 
@@ -72,6 +73,29 @@ func (t *tunnelClient) Start() error {
 	return nil
 }
 
+func (t *tunnelClient) markAlive() {
+	t.connMu.Lock()
+	t.lastPong = time.Now()
+	t.connMu.Unlock()
+}
+
+func (t *tunnelClient) writeControl(conn *websocket.Conn, messageType int, data []byte, deadline time.Time) error {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	t.connMu.RLock()
+	currentConn := t.conn
+	t.connMu.RUnlock()
+	if currentConn != conn {
+		return nil
+	}
+
+	conn.SetWriteDeadline(deadline)
+	err := conn.WriteControl(messageType, data, deadline)
+	conn.SetWriteDeadline(time.Time{})
+	return err
+}
+
 func (t *tunnelClient) connectWebSocket() error {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: tunnelTimeout,
@@ -92,9 +116,7 @@ func (t *tunnelClient) connectWebSocket() error {
 
 	// Set pong handler - tracks responses to our pings
 	conn.SetPongHandler(func(string) error {
-		t.connMu.Lock()
-		t.lastPong = time.Now()
-		t.connMu.Unlock()
+		t.markAlive()
 		return nil
 	})
 
@@ -102,11 +124,9 @@ func (t *tunnelClient) connectWebSocket() error {
 	// Default handler auto-responds with pong, but we also update lastPong
 	// to reflect that the connection is alive (server reached us)
 	conn.SetPingHandler(func(appData string) error {
-		t.connMu.Lock()
-		t.lastPong = time.Now()
-		t.connMu.Unlock()
+		t.markAlive()
 		// Send pong response (same as default handler behavior)
-		err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(tunnelPongTimeout))
+		err := t.writeControl(conn, websocket.PongMessage, []byte(appData), time.Now().Add(tunnelPongTimeout))
 		if err == websocket.ErrCloseSent {
 			return nil
 		} else if e, ok := err.(net.Error); ok && e.Timeout() {
@@ -184,7 +204,10 @@ func (t *tunnelClient) forwardUDPToWS(clientMap map[string]*net.UDPAddr, mu *syn
 		t.connMu.RUnlock()
 
 		if conn != nil {
-			if err := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+			t.writeMu.Lock()
+			err := conn.WriteMessage(websocket.BinaryMessage, buf[:n])
+			t.writeMu.Unlock()
+			if err != nil {
 				log.Printf("WebSocket write error: %v", err)
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -253,6 +276,8 @@ func (t *tunnelClient) forwardWSToUDP(clientMap map[string]*net.UDPAddr, mu *syn
 			}
 		}
 
+		t.markAlive()
+
 		mu.Lock()
 		clientAddr := clientMap["last"]
 		mu.Unlock()
@@ -303,17 +328,10 @@ func (t *tunnelClient) pingLoop() {
 			}
 
 			// Send ping
-			t.connMu.Lock()
-			if t.conn != nil {
-				deadline := time.Now().Add(tunnelPongTimeout)
-				t.conn.SetWriteDeadline(deadline)
-				err := t.conn.WriteControl(websocket.PingMessage, []byte{}, deadline)
-				t.conn.SetWriteDeadline(time.Time{})
-				if err != nil {
-					log.Printf("Failed to send ping: %v", err)
-				}
+			deadline := time.Now().Add(tunnelPongTimeout)
+			if err := t.writeControl(conn, websocket.PingMessage, []byte{}, deadline); err != nil {
+				log.Printf("Failed to send ping: %v", err)
 			}
-			t.connMu.Unlock()
 		}
 	}
 }

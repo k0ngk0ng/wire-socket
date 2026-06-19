@@ -429,27 +429,29 @@ Authorization: Bearer eyJ...
 
 ## 客户端集成
 
-### Desktop Client（Electron）
+### Desktop Client（Tauri 2）
 
 ```javascript
+const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
+
 // 1. 获取可用的认证方式
-const { providers } = await fetch('/api/auth/providers').then(r => r.json());
+const result = await invoke('sso_get_providers', { serverAddress });
+const { providers } = result.data;
 
 // 2. 用户选择 SSO 方式
 const selectedProvider = providers.find(p => p.id === 'azure-ad');
 
 // 3. 打开系统浏览器进行 SSO 登录
-const { shell } = require('electron');
-const callbackUrl = `wiresocket://auth/callback`;
-const ssoUrl = `${serverUrl}/api/auth/sso/${selectedProvider.id}?redirect_uri=${encodeURIComponent(callbackUrl)}`;
-shell.openExternal(ssoUrl);
+await invoke('sso_login', {
+  serverAddress,
+  providerId: selectedProvider.id,
+});
 
 // 4. 注册 deep link 处理器接收回调
-app.setAsDefaultProtocolClient('wiresocket');
-app.on('open-url', (event, url) => {
-  // url: wiresocket://auth/callback?token=xxx
-  const token = new URL(url).searchParams.get('token');
-  // 使用 token 连接 VPN
+await listen('sso-callback', async (event) => {
+  const { token } = event.payload;
+  await invoke('sso_connect_with_token', { serverAddress, token });
 });
 ```
 
@@ -599,8 +601,8 @@ type User struct {
 
 | 任务 | 文件 | 说明 |
 |------|------|------|
-| Electron SSO | `client/frontend/src/main/sso.js` | 桌面端 SSO 流程 |
-| Deep Link | `client/frontend/src/main/protocol.js` | 协议处理 |
+| Tauri SSO | `client/frontend/src-tauri/src/lib.rs` | 桌面端 SSO 流程 |
+| Deep Link | `client/frontend/src-tauri/src/lib.rs` | 协议处理 |
 | CLI 支持 | `cmd/wsctl/login.go` | CLI SSO 登录 |
 
 ### 依赖库

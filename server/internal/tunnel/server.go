@@ -160,6 +160,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	var writeMu sync.Mutex
 
 	// Set up ping/pong handling
 	// Client sends ping every 30s - we must extend read deadline on receiving ping
@@ -169,7 +170,9 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn.SetPingHandler(func(appData string) error {
 		conn.SetReadDeadline(time.Now().Add(ReadTimeout))
 		// Send pong response (same as default handler behavior)
-		err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(10*time.Second))
+		writeMu.Lock()
+		err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(PongTimeout))
+		writeMu.Unlock()
 		if err == websocket.ErrCloseSent {
 			return nil
 		} else if e, ok := err.(net.Error); ok && e.Timeout() {
@@ -209,7 +212,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		s.pingLoop(ctx, conn)
+		s.pingLoop(ctx, conn, &writeMu)
 	}()
 
 	// WebSocket -> UDP
@@ -223,7 +226,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		s.udpToWS(ctx, udpConn, conn)
+		s.udpToWS(ctx, udpConn, conn, &writeMu)
 	}()
 
 	wg.Wait()
@@ -264,7 +267,7 @@ func (s *Server) wsToUDP(ctx context.Context, ws *websocket.Conn, udp *net.UDPCo
 }
 
 // udpToWS forwards data from UDP to WebSocket
-func (s *Server) udpToWS(ctx context.Context, udp *net.UDPConn, ws *websocket.Conn) {
+func (s *Server) udpToWS(ctx context.Context, udp *net.UDPConn, ws *websocket.Conn, writeMu *sync.Mutex) {
 	buf := make([]byte, DefaultBufferSize)
 	for {
 		select {
@@ -283,7 +286,9 @@ func (s *Server) udpToWS(ctx context.Context, udp *net.UDPConn, ws *websocket.Co
 			return
 		}
 
+		writeMu.Lock()
 		err = ws.WriteMessage(websocket.BinaryMessage, buf[:n])
+		writeMu.Unlock()
 		if err != nil {
 			log.Printf("WebSocket write error: %v", err)
 			return
@@ -293,7 +298,7 @@ func (s *Server) udpToWS(ctx context.Context, udp *net.UDPConn, ws *websocket.Co
 
 // pingLoop sends periodic ping messages from server to client to keep the connection alive.
 // This ensures bidirectional keepalive: client pings server AND server pings client.
-func (s *Server) pingLoop(ctx context.Context, ws *websocket.Conn) {
+func (s *Server) pingLoop(ctx context.Context, ws *websocket.Conn, writeMu *sync.Mutex) {
 	ticker := time.NewTicker(PingInterval)
 	defer ticker.Stop()
 
@@ -303,7 +308,10 @@ func (s *Server) pingLoop(ctx context.Context, ws *websocket.Conn) {
 			return
 		case <-ticker.C:
 			deadline := time.Now().Add(PongTimeout)
-			if err := ws.WriteControl(websocket.PingMessage, []byte{}, deadline); err != nil {
+			writeMu.Lock()
+			err := ws.WriteControl(websocket.PingMessage, []byte{}, deadline)
+			writeMu.Unlock()
+			if err != nil {
 				// Connection is likely dead
 				log.Printf("Server ping failed: %v", err)
 				return

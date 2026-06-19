@@ -334,7 +334,7 @@ func main() {
 	svcConfig := &service.Config{
 		Name:             "WireSocketClient",
 		DisplayName:      "WireSocket Client Service",
-		Description:      "Manages VPN connections with WireGuard and wstunnel",
+		Description:      "Manages VPN connections with WireGuard and WebSocket tunneling",
 		WorkingDirectory: exeDir, // Set working directory for service (needed for wintun.dll)
 		Option: service.KeyValue{
 			// macOS launchd: start service at system boot

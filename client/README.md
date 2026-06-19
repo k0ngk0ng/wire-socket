@@ -13,19 +13,16 @@ client/
 │   │   ├── api/      # HTTP API 服务器
 │   │   ├── connection/  # 连接管理
 │   │   ├── wireguard/   # WireGuard 接口管理
-│   │   └── wstunnel/    # wstunnel 客户端管理
+│   │   └── wstunnel/    # 内置 WebSocket tunnel 管理
 │   ├── go.mod
 │   └── go.sum
 │
-└── frontend/         # Electron 前端应用
-    ├── src/          # 源代码
-    │   ├── main/     # Electron 主进程
-    │   └── preload/  # 预加载脚本
-    ├── public/       # 静态资源
+└── frontend/         # Tauri 2 桌面应用
+    ├── public/       # 静态 UI
+    ├── src-tauri/    # Tauri Rust 入口和配置
     ├── resources/    # 打包资源
     │   └── bin/      # 各平台二进制文件
     ├── scripts/      # 构建脚本
-    ├── build/        # 打包配置
     └── package.json
 ```
 
@@ -62,7 +59,7 @@ npm run build
 **核心功能**：
 - 系统服务管理（支持 Windows Service、macOS LaunchDaemon、Linux systemd）
 - WireGuard 接口创建和管理
-- wstunnel 客户端进程管理
+- 内置 WebSocket tunnel 管理
 - 本地 HTTP API 服务器（监听 localhost:41945）
 - 连接状态和流量统计
 
@@ -77,19 +74,21 @@ npm run build
 - 需要 root/管理员权限运行
 - 用于创建网络接口和配置路由
 
-### Frontend (Electron)
+### Frontend (Tauri 2)
 
 **核心功能**：
-- 用户友好的桌面界面
+- 接近原生风格的桌面界面
 - 服务器配置管理
 - 实时连接状态显示
 - 流量统计可视化
 - 系统托盘集成
+- Deep link SSO 回调
 
 **技术栈**：
-- Electron 28+
+- Tauri 2
+- Rust
 - HTML/CSS/JavaScript
-- 与后端通过 HTTP API 通信
+- 通过 Tauri command 转发到本地后端 HTTP API
 
 ## 🔧 开发指南
 
@@ -123,15 +122,16 @@ npm start
 **修改 UI**：
 - 编辑 `public/index.html`
 - 修改 CSS 样式
-- JavaScript 逻辑在 `src/` 目录
+- JavaScript 逻辑内联在静态页面中
+- 桌面能力在 `src-tauri/src/lib.rs`
 
 **调试**：
-- 使用 Chrome DevTools（Electron 内置）
+- 使用系统 WebView 开发者工具
 - 查看控制台日志
 
 ## 📦 打包和发布
 
-### 构建所有平台
+### 构建当前平台
 
 ```bash
 cd frontend
@@ -139,12 +139,12 @@ npm run build
 ```
 
 这会自动：
-1. 下载所有依赖（wstunnel、wireguard-go）
+1. 准备 WireGuard 组件和平台资源
 2. 交叉编译后端服务
-3. 打包 Electron 应用
-4. 生成平台特定的安装包
+3. 打包 Tauri 应用
+4. 生成当前平台的安装包
 
-输出位置：`frontend/dist/`
+输出位置：`frontend/src-tauri/target/release/bundle/`
 
 ### 构建特定平台
 
@@ -154,7 +154,7 @@ npm run build:win     # Windows
 npm run build:linux   # Linux
 ```
 
-详细说明请参考 [frontend/PACKAGING.md](frontend/PACKAGING.md)。
+详细说明请参考 [../docs/PACKAGING.md](../docs/PACKAGING.md)。
 
 ## 🔄 架构和通信
 
@@ -162,8 +162,8 @@ npm run build:linux   # Linux
 
 ```
 ┌─────────────────┐
-│  Electron UI    │
-│  (Renderer)     │
+│  Tauri UI       │
+│  (WebView)      │
 └────────┬────────┘
          │ HTTP (localhost:41945)
          ↓
@@ -176,16 +176,16 @@ npm run build:linux   # Linux
     │         │
     ↓         ↓
 ┌────────┐  ┌──────────┐
-│WireGuard│  │wstunnel  │
-│Interface│  │Client    │
+│WireGuard│  │Built-in  │
+│Interface│  │WS Tunnel │
 └────────┘  └──────────┘
 ```
 
 ### 数据流
 
-1. **用户操作** → Electron UI
+1. **用户操作** → Tauri UI
 2. **HTTP 请求** → Backend API (localhost:41945)
-3. **管理操作** → WireGuard + wstunnel
+3. **管理操作** → WireGuard + 内置 WebSocket tunnel
 4. **网络流量** → VPN 服务器
 
 ## 🛠️ 故障排除
@@ -217,20 +217,18 @@ sudo apt install wireguard-tools
 curl http://localhost:41945/health
 ```
 
-### wstunnel 未找到
+### 后端二进制未找到
 
-**问题**: "wstunnel binary not found"
-**解决**:
-- 开发模式：手动安装 wstunnel
-- 打包模式：运行 `npm run prepare` 自动下载
+**问题**: "backend binary not found"
+**解决**: 在前端目录运行 `npm run prepare` 生成打包资源。
 
 ## 📚 相关文档
 
 - **前端详细文档**: [frontend/README.md](frontend/README.md)
-- **打包指南**: [frontend/PACKAGING.md](frontend/PACKAGING.md)
-- **架构说明**: [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md)
+- **打包指南**: [../docs/PACKAGING.md](../docs/PACKAGING.md)
+- **架构说明**: [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
 - **项目总览**: [../README.md](../README.md)
-- **开发指南**: [../CLAUDE.md](../CLAUDE.md)
+- **开发指南**: [../AGENTS.md](../AGENTS.md)
 
 ## 🤝 贡献
 

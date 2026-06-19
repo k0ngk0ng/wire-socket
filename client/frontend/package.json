@@ -1,133 +1,33 @@
 {
   "name": "wire-socket",
-  "version": "1.0.0",
+  "version": "0.10.3",
   "description": "Cross-platform VPN client with WireGuard over WebSocket tunneling",
   "repository": {
     "type": "git",
     "url": "https://github.com/k0ngk0ng/wire-socket.git"
   },
-  "main": "src/main/index.js",
   "scripts": {
-    "start": "electron .",
+    "start": "tauri dev",
+    "dev": "tauri dev",
     "prepare": "./scripts/prepare-package.sh",
-    "build": "npm run prepare && electron-builder --mac --win --linux",
-    "build:mac": "npm run prepare && electron-builder --mac",
-    "build:win": "npm run prepare && electron-builder --win",
-    "build:linux": "npm run prepare && electron-builder --linux",
-    "build:ci:mac": "electron-builder --mac --publish never",
-    "build:ci:win": "electron-builder --win --publish never",
-    "build:ci:linux": "electron-builder --linux --publish never"
+    "build": "npm run prepare && tauri build",
+    "build:mac": "npm run prepare && tauri build --bundles app",
+    "build:mac:dmg": "npm run prepare && tauri build --bundles dmg",
+    "build:win": "npm run prepare && tauri build --bundles nsis",
+    "build:linux": "npm run prepare && tauri build --bundles appimage,deb,rpm",
+    "build:ci:mac": "tauri build --target universal-apple-darwin --bundles app --ci",
+    "build:ci:win": "tauri build --bundles nsis --ci",
+    "build:ci:linux": "tauri build --bundles appimage,deb,rpm --ci",
+    "tauri": "tauri"
   },
   "keywords": [
     "vpn",
     "wireguard",
-    "electron"
+    "tauri"
   ],
   "author": "chenj",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "axios": "^1.6.2",
-    "keytar": "^7.9.0",
-    "electron-store": "^8.1.0",
-    "auto-launch": "^5.0.6",
-    "@vscode/sudo-prompt": "^9.3.1"
-  },
-  "build": {
-    "appId": "com.wiresocket.app",
-    "productName": "WireSocket",
-    "directories": {
-      "output": "../dist"
-    },
-    "files": [
-      "src/**/*",
-      "public/**/*",
-      "assets/**/*",
-      "!resources/bin/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "assets",
-        "to": "assets",
-        "filter": ["*.png"]
-      }
-    ],
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "assets/icon-1024.png",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "extraResources": [
-        {
-          "from": "resources/bin/darwin",
-          "to": "bin",
-          "filter": ["**/*"]
-        }
-      ]
-    },
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "assets/icon-1024.png",
-      "requestedExecutionLevel": "requireAdministrator",
-      "extraResources": [
-        {
-          "from": "resources/bin/win32",
-          "to": "bin",
-          "filter": ["**/*"]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": true,
-      "allowToChangeInstallationDirectory": true,
-      "allowElevation": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "WireSocket",
-      "include": "build/installer.nsh"
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb",
-        "rpm"
-      ],
-      "icon": "assets/icon-1024.png",
-      "category": "Network",
-      "maintainer": "WireSocket Team",
-      "synopsis": "Cross-platform VPN client with WireGuard",
-      "extraResources": [
-        {
-          "from": "resources/bin/linux",
-          "to": "bin",
-          "filter": ["**/*"]
-        }
-      ]
-    },
-    "deb": {
-      "depends": [
-        "libappindicator3-1"
-      ],
-      "afterInstall": "build/linux-post-install.sh"
-    },
-    "rpm": {
-      "depends": [
-        "libappindicator-gtk3"
-      ],
-      "afterInstall": "build/linux-post-install.sh"
-    }
+    "@tauri-apps/cli": "^2.8.0"
   }
 }

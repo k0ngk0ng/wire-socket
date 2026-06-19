@@ -23,7 +23,7 @@ func NewServer(connMgr *sdkadapter.Manager, addr string, version string) *Server
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.Default()
 
-	// Enable CORS for local Electron app
+	// Enable CORS for the local desktop app and browser preview.
 	engine.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")

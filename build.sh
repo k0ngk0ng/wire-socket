@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # WireSocket Unified Build Script
-# Builds server, client backend, and client frontend (Electron app with bundled backend)
+# Builds server, client backend, and client frontend (Tauri app with bundled backend)
 
 set -e
 
@@ -61,11 +61,11 @@ Examples:
     $0                          # Build everything for current platform
     $0 --server                 # Build server only
     $0 --client --platform mac  # Build client for macOS
-    $0 --platform all           # Build everything for all platforms
+    $0 --platform all           # Build all backend resources, then package current Tauri platform
 
 Output:
     Server:   ./server/dist/wire-socket-server
-    Client:   ./client/dist/
+    Client:   ./client/frontend/src-tauri/target/release/bundle/
 EOF
 }
 
@@ -156,6 +156,20 @@ check_prerequisites() {
             print_success "npm $(npm -v)"
         else
             print_error "npm not found"
+            missing=true
+        fi
+
+        if command -v cargo &> /dev/null; then
+            print_success "Cargo $(cargo --version | awk '{print $2}')"
+        else
+            print_error "Cargo not found. Please install Rust: https://rustup.rs/"
+            missing=true
+        fi
+
+        if command -v rustc &> /dev/null; then
+            print_success "Rust $(rustc --version | awk '{print $2}')"
+        else
+            print_error "rustc not found. Please install Rust: https://rustup.rs/"
             missing=true
         fi
     fi
@@ -254,35 +268,35 @@ build_client() {
             ;;
     esac
 
-    # Build Electron app
-    print_header "Building Electron App"
+    # Build Tauri app
+    print_header "Building Tauri App"
 
     cd "$SCRIPT_DIR/client/frontend"
 
     case "$PLATFORM" in
         mac)
-            echo "Building Electron app for macOS..."
+            echo "Building Tauri app for macOS..."
             npm run build:mac
             ;;
         linux)
-            echo "Building Electron app for Linux..."
+            echo "Building Tauri app for Linux..."
             npm run build:linux
             ;;
         win)
-            echo "Building Electron app for Windows..."
+            echo "Building Tauri app for Windows..."
             npm run build:win
             ;;
         all)
-            echo "Building Electron app for all platforms..."
+            echo "Building Tauri app for current platform..."
             npm run build
             ;;
     esac
 
-    print_success "Client built: ./client/dist/"
+    print_success "Client built: ./client/frontend/src-tauri/target/release/bundle/"
 
     echo ""
     echo "Distribution packages:"
-    ls -lh "$SCRIPT_DIR/client/dist/" 2>/dev/null || true
+    find "$SCRIPT_DIR/client/frontend/src-tauri/target/release/bundle" -maxdepth 3 -type f 2>/dev/null | sort || true
 }
 
 # Main execution
@@ -313,7 +327,7 @@ main() {
     fi
 
     if [[ "$BUILD_CLIENT" == "true" ]]; then
-        echo "  Client:   ./client/dist/"
+        echo "  Client:   ./client/frontend/src-tauri/target/release/bundle/"
         echo ""
         echo "Note: The client package includes the backend service."
         echo "      Backend is bundled at: <app>/Contents/Resources/bin/"

@@ -2,403 +2,140 @@
 
 ## 整体架构
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
-│                     WireSocket Client                         │
-│                                                               │
+│                     WireSocket Client                       │
+│                                                             │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │           Electron Frontend (UI)                    │    │
-│  │  - React/HTML界面                                   │    │
-│  │  - 用户交互                                         │    │
-│  │  - 状态显示                                         │    │
+│  │              Tauri 2 Frontend                       │    │
+│  │  - 静态 HTML/CSS/JavaScript UI                      │    │
+│  │  - 系统托盘、deep link、窗口生命周期                 │    │
+│  │  - 自动安装和启动后端服务                            │    │
 │  └──────────────────────┬──────────────────────────────┘    │
-│                         │ HTTP (localhost:41945)             │
-│                         ↓                                     │
+│                         │ Tauri command / local HTTP         │
+│                         ↓                                    │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │      Client Backend Service (Go)                    │    │
-│  │  - 连接管理                                         │    │
-│  │  - 配置管理                                         │    │
-│  │  - 本地API服务器                                    │    │
+│  │              Client Backend Service (Go)            │    │
+│  │  - 本地 API: 127.0.0.1:41945                         │    │
+│  │  - 连接状态和配置管理                                │    │
+│  │  - WireGuard 接口管理                                │    │
+│  │  - 内置 WebSocket tunnel                             │    │
 │  └──────────┬─────────────────────┬────────────────────┘    │
-│             │                     │                           │
-│             │                     │                           │
-│  ┌──────────▼─────────┐  ┌───────▼────────────┐             │
-│  │  WireGuard         │  │   wstunnel         │             │
-│  │  Interface         │  │   Client           │             │
-│  │  - wg0/utun        │  │   Process          │             │
-│  │  - 加密/解密       │  │   - WebSocket      │             │
-│  └──────────┬─────────┘  └────────┬───────────┘             │
-│             │                      │                          │
-└─────────────┼──────────────────────┼──────────────────────────┘
+│             │                     │                         │
+│  ┌──────────▼─────────┐  ┌────────▼────────────┐            │
+│  │  WireGuard         │  │ Built-in WS Tunnel  │            │
+│  │  Interface         │  │ UDP over WS/WSS     │            │
+│  └──────────┬─────────┘  └────────┬────────────┘            │
+└─────────────┼──────────────────────┼────────────────────────┘
               │                      │
-              │ (encrypted)          │ (WSS/WS)
+              │ encrypted UDP        │ WS/WSS
               ↓                      ↓
         ┌─────────────────────────────────────┐
-        │           Network                    │
-        │  ┌──────────────┐  ┌──────────────┐ │
-        │  │ Direct UDP   │  │  WebSocket   │ │
-        │  │ (fallback)   │  │  (primary)   │ │
-        │  └──────────────┘  └──────────────┘ │
-        └─────────────────────────────────────┘
-                      ↓
-        ┌─────────────────────────────────────┐
-        │         VPN Server                   │
+        │             VPN Server              │
         └─────────────────────────────────────┘
 ```
 
 ## 打包架构
 
-### 资源文件结构
-
-```
-安装包
-├── Electron App
-│   ├── index.html (UI)
-│   ├── main.js (主进程)
-│   ├── preload.js (预加载)
-│   └── renderer.js (渲染进程)
-│
-└── Resources/
-    └── bin/
-        ├── wire-socket-client     (Go 后端服务)
-        ├── wstunnel              (WebSocket 隧道)
-        └── wireguard-go*         (WireGuard 用户空间实现)
-                                  (* macOS/Windows)
-```
-
-### 平台差异
-
-#### macOS (.app bundle)
-```
-WireSocket.app/
-├── Contents/
-│   ├── MacOS/
-│   │   └── WireSocket (Electron)
-│   ├── Resources/
-│   │   └── bin/
-│   │       ├── wire-socket-client
-│   │       ├── wstunnel
-│   │       └── wireguard-go
-│   └── Info.plist
-```
-
-#### Windows (安装目录)
-```
-C:\Program Files\WireSocket\
-├── WireSocket.exe (Electron)
-├── resources/
-│   └── bin/
+```text
+client/frontend/
+├── public/                  # 静态 UI
+├── src-tauri/               # Tauri 2 Rust 入口和配置
+│   ├── src/lib.rs           # commands、tray、deep link、服务启动
+│   ├── tauri.conf.json      # bundle/resources/window/security
+│   ├── capabilities/        # Tauri 权限
+│   └── icons/               # 应用图标
+├── resources/bin/           # npm run prepare 生成
+│   ├── darwin/
+│   │   ├── wire-socket-client
+│   │   ├── wire-socket-client-arm64
+│   │   ├── wireguard-go
+│   │   └── wireguard-go-arm64
+│   ├── linux/
+│   │   └── wire-socket-client
+│   └── win32/
 │       ├── wire-socket-client.exe
-│       ├── wstunnel.exe
 │       ├── wireguard.exe
 │       └── wintun.dll
+└── scripts/
 ```
 
-#### Linux (AppImage/安装目录)
-```
-/opt/WireSocket/
-├── wiresocket (Electron)
-└── resources/
-    └── bin/
-        ├── wire-socket-client
-        └── wstunnel
-```
+WebSocket tunnel 已内置到 Go 后端，不再需要外部 `wstunnel` 二进制。
 
 ## 运行时流程
 
-### 1. 应用启动
+### 应用启动
 
-```
-用户启动应用
+```text
+用户启动 WireSocket
     ↓
-Electron 主进程启动
+Tauri 初始化窗口、托盘、deep link
     ↓
-检查客户端后端服务状态
+检测后端服务 /health
     ↓
-如果未运行：启动 wire-socket-client
+未运行时通过系统提权安装或启动 wire-socket-client
     ↓
-启动 Electron 窗口
+UI 通过 Tauri command 调用本地后端 API
+```
+
+### 连接 VPN
+
+```text
+用户点击连接
     ↓
-加载 UI
-```
-
-### 2. 连接VPN
-
-```
-用户点击"连接"
+Tauri command: connect(credentials)
     ↓
-前端 → HTTP POST → 后端 (/api/connect)
+Go backend: POST /api/connect
     ↓
-后端服务处理
-    ├─→ 创建 WireGuard 接口
-    │   ├─→ 生成密钥对
-    │   ├─→ 配置接口 (IP, DNS)
-    │   └─→ 设置路由
-    │
-    ├─→ 启动 wstunnel 客户端
-    │   ├─→ 查找 wstunnel 二进制
-    │   ├─→ 启动 WebSocket 隧道
-    │   └─→ 连接到服务器
-    │
-    └─→ 返回连接状态
-        ↓
-前端更新 UI
-    ├─→ 显示"已连接"
-    ├─→ 显示分配的 IP
-    └─→ 开始显示流量统计
-```
-
-### 3. 流量统计更新
-
-```
-定时器 (每秒)
+创建 WireGuard 接口并获取服务端配置
     ↓
-前端 → HTTP GET → 后端 (/api/status)
+启动内置 WebSocket tunnel
     ↓
-后端查询 WireGuard 接口统计
-    ↓
-计算速率 (bytes/sec)
-    ↓
-返回 JSON {rx_bytes, tx_bytes, rx_speed, tx_speed}
-    ↓
-前端更新显示
+状态通过 /api/status 轮询回到 UI
 ```
 
-### 4. 断开连接
+## 进程模型
 
-```
-用户点击"断开"
-    ↓
-前端 → HTTP POST → 后端 (/api/disconnect)
-    ↓
-后端服务处理
-    ├─→ 停止 wstunnel 客户端
-    └─→ 删除 WireGuard 接口
-        ↓
-返回断开状态
-    ↓
-前端更新 UI → 显示"未连接"
-```
+- Tauri 应用以普通用户权限运行。
+- Go 后端服务以 root/管理员权限运行，用于创建 TUN/WireGuard 接口和配置路由。
+- Tauri 负责在首次启动或版本变化时触发服务安装/重启。
+- 前端不直接操作系统网络能力，所有高权限操作都在 Go 后端中完成。
 
-## 组件通信
+## 通信方式
 
-### IPC 通信 (Electron)
+Tauri commands：
 
-```
-Renderer Process ←→ Preload Script ←→ Main Process
-      (UI)             (Bridge)         (后台)
-        │                  │                │
-        │  window.api.*    │   ipcRenderer  │
-        │ ─────────────→   │ ─────────────→ │
-        │                  │                │
-        │    callback      │   ipcMain      │
-        │ ←───────────────  │ ←───────────── │
-```
+- `check_service`
+- `connect`
+- `disconnect`
+- `get_status`
+- `get_route_settings`
+- `update_route_settings`
+- `change_password`
+- `sso_get_providers`
+- `sso_login`
+- `sso_connect_with_token`
 
-### HTTP API (后端服务)
+本地后端 API：
 
-```
-Electron Frontend ←─────→ Client Backend Service
-                HTTP/JSON
-            (localhost:41945)
+- `GET /health`
+- `POST /api/connect`
+- `POST /api/disconnect`
+- `GET /api/status`
+- `GET /api/routes/settings`
+- `PUT /api/routes/settings`
+- `POST /api/change-password`
 
-API 端点：
-- POST /api/connect
-- POST /api/disconnect
-- GET  /api/status
-- GET  /api/servers
-- POST /api/servers
-```
+## 空闲连接保活
 
-### 进程管理
+WebSocket tunnel 两端都会使用 ping/pong 保活。客户端和服务端都必须保证同一条 WebSocket 连接只有一个并发 writer；数据帧、ping 和 pong 都要串行写入，避免 gorilla/websocket 在无业务数据时因为并发控制帧写入导致连接异常关闭。
 
-```
-Electron Main Process
-    │
-    ├─→ Spawn: wire-socket-client (如果未运行)
-    │      │
-    │      ├─→ Spawn: wstunnel client (连接时)
-    │      │
-    │      └─→ Manage: WireGuard interface
-    │
-    └─→ Electron Renderer Process (UI)
-```
+## 体积策略
 
-## 二进制文件查找顺序
+迁移到 Tauri 2 后，不再随应用打包 Chromium。桌面壳使用系统 WebView，主要体积来自：
 
-### wstunnel 查找
+- Go 后端服务二进制
+- WireGuard 平台组件
+- Tauri Rust 壳
 
-```go
-findWSTunnelBinary() {
-    1. 检查可执行文件同目录
-       ./wstunnel (Linux/macOS)
-       ./wstunnel.exe (Windows)
-
-    2. macOS App Bundle
-       ../Resources/bin/wstunnel
-
-    3. 系统 PATH
-       exec.LookPath("wstunnel")
-
-    4. 常见位置
-       /usr/local/bin/wstunnel
-       /usr/bin/wstunnel
-       C:\Program Files\wstunnel\wstunnel.exe
-}
-```
-
-### WireGuard 工具
-
-#### Linux
-- 使用内核 WireGuard (需要 `ip` 命令)
-- 依赖系统安装的 `wireguard-tools`
-
-#### macOS
-- 使用打包的 `wireguard-go` (用户空间实现)
-- 位于 Resources/bin/wireguard-go
-
-#### Windows
-- 使用打包的 `wireguard.exe` + `wintun.dll`
-- 位于 resources/bin/
-
-## 构建流程架构
-
-```
-开发者运行: npm run build
-    ↓
-┌─────────────────────────────────┐
-│   Step 1: Prepare Dependencies  │
-│                                  │
-│  ┌─────────────────────────┐    │
-│  │  Download wstunnel      │    │
-│  │  - macOS (x64/arm64)    │    │
-│  │  - Linux (x64)          │    │
-│  │  - Windows (x64)        │    │
-│  └─────────────────────────┘    │
-│                                  │
-│  ┌─────────────────────────┐    │
-│  │  Build wireguard-go     │    │
-│  │  - Clone from Git       │    │
-│  │  - Cross-compile        │    │
-│  │  - Download wintun.dll  │    │
-│  └─────────────────────────┘    │
-│                                  │
-│  ┌─────────────────────────┐    │
-│  │  Build Client Backend   │    │
-│  │  - Go cross-compile     │    │
-│  │  - All platforms        │    │
-│  └─────────────────────────┘    │
-└─────────────────────────────────┘
-    ↓
-┌─────────────────────────────────┐
-│   Step 2: Package with Electron │
-│                                  │
-│  electron-builder                │
-│    ↓                             │
-│  ┌─────────────────────────┐    │
-│  │  Collect resources      │    │
-│  │  - Electron files       │    │
-│  │  - Binary files         │    │
-│  │  - Assets               │    │
-│  └─────────────────────────┘    │
-│    ↓                             │
-│  ┌─────────────────────────┐    │
-│  │  Create installers      │    │
-│  │  - macOS: DMG/ZIP       │    │
-│  │  - Windows: NSIS/EXE    │    │
-│  │  - Linux: AppImage/DEB  │    │
-│  └─────────────────────────┘    │
-└─────────────────────────────────┘
-    ↓
-    输出到 dist/ 目录
-```
-
-## 安全考虑
-
-### 1. 权限要求
-
-- **WireGuard 操作**: 需要 root/管理员权限
-- **服务安装**: 需要 root/管理员权限
-- **网络配置**: 需要系统权限
-
-### 2. 进程隔离
-
-```
-Electron (普通权限)
-    ↓ IPC/HTTP
-Client Backend (特权进程)
-    ↓ Spawn
-wstunnel (继承权限)
-    ↓ Network
-WireGuard (内核/用户空间)
-```
-
-### 3. 数据存储
-
-- **配置文件**: 用户目录 (~/.wire-socket/)
-- **日志文件**: 系统日志
-- **私钥**: 内存中临时存储，用完即删
-
-## 性能优化
-
-### 1. 二进制文件优化
-
-- Go 编译: `-ldflags "-s -w"` (移除调试信息)
-- wireguard-go: 优化构建
-- Electron: asar 打包
-
-### 2. 启动优化
-
-- 延迟加载非关键组件
-- 并行初始化
-- 缓存配置
-
-### 3. 网络优化
-
-- wstunnel: 复用 WebSocket 连接
-- WireGuard: UDP 优化
-- 统计信息: 定时采样，减少查询频率
-
-## 故障恢复
-
-### 1. 连接断开
-
-```
-检测到连接断开
-    ↓
-重试机制 (3次)
-    ├─→ 成功 → 恢复正常
-    └─→ 失败 → 通知用户
-```
-
-### 2. 进程崩溃
-
-```
-检测到后端服务崩溃
-    ↓
-自动重启服务
-    ├─→ 成功 → 尝试重连
-    └─→ 失败 → 提示用户重启应用
-```
-
-### 3. 网络切换
-
-```
-检测到网络变化
-    ↓
-断开现有连接
-    ↓
-等待网络稳定
-    ↓
-自动重连
-```
-
-## 总结
-
-这个架构实现了：
-
-✅ **模块化设计** - 各组件职责清晰
-✅ **跨平台兼容** - 统一接口，平台差异在底层处理
-✅ **易于维护** - 清晰的通信机制和错误处理
-✅ **用户友好** - 自动化程度高，无需手动配置
-✅ **安全可靠** - 适当的权限隔离和错误恢复
+`src-tauri/Cargo.toml` 的 release profile 已使用偏体积优化的设置。

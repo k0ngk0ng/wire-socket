@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "targets": ["app"],
+    "resources": {
+      "../resources/bin/darwin/": "bin/darwin/",
+      "../../assets/tray-icon.png": "assets/tray-icon.png",
+      "../../assets/tray-icon-mac.png": "assets/tray-icon-mac.png",
+      "../../assets/icon-1024.png": "assets/icon-1024.png"
+    }
+  }
+}

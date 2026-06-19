@@ -29,11 +29,11 @@ go.work.sum
 # Build artifacts
 dist/
 out/
+target/
+client/frontend/src-tauri/target/
 *.app
 *.dmg
 
-# Except client/frontend/build (electron-builder config)
-!client/frontend/build/
 *.pkg
 *.deb
 *.rpm
@@ -134,6 +134,9 @@ temp/
 !client/mobile/android/**/*.xml
 # Except iOS plist files
 !client/mobile/ios/**/*.plist
+# Except Tauri desktop configuration/icons
+!client/frontend/src-tauri/entitlements.plist
+!client/frontend/src-tauri/icons/android/**/*.xml
 
 # Certificates and keys (security)
 *.pem
@@ -142,9 +145,6 @@ temp/
 *.cer
 *.p12
 *.pfx
-
-# Electron specific
-.cache-electron-builder/
 
 # Go module cache
 *.sum.lock
