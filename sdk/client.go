@@ -21,15 +21,16 @@ type Client struct {
 	options Options
 
 	// Connection state
-	state     State
-	config    *ConnectConfig
-	status    Status
-	stats     Stats
+	state       State
+	config      *ConnectConfig
+	status      Status
+	stats       Stats
 	connectedAt time.Time
 
 	// WireGuard and tunnel
-	wgBackend    wgBackend
-	tunnelClient *tunnelClient
+	wgBackend      wgBackend
+	tunnelClient   *tunnelClient
+	powerAssertion *powerAssertion
 
 	// Event handling
 	eventHandlers []EventHandler
@@ -138,8 +139,10 @@ func (c *Client) Disconnect() error {
 	// Capture references before unlocking
 	tunnel := c.tunnelClient
 	wg := c.wgBackend
+	powerAssertion := c.powerAssertion
 	c.tunnelClient = nil
 	c.wgBackend = nil
+	c.powerAssertion = nil
 	c.state = StateDisconnected
 	c.token = ""
 	c.assignedIP = ""
@@ -152,6 +155,9 @@ func (c *Client) Disconnect() error {
 	}
 	if wg != nil {
 		wg.Close()
+	}
+	if powerAssertion != nil {
+		powerAssertion.Stop()
 	}
 
 	c.emitEvent(EventDisconnected, nil, nil)
@@ -323,12 +329,18 @@ func (c *Client) doConnect(config ConnectConfig) {
 	}
 
 	c.wgBackend = wg
+	powerAssertion := startPowerAssertion(c.log)
 
 	// Step 4: Mark connected
 	c.mu.Lock()
+	oldPowerAssertion := c.powerAssertion
+	c.powerAssertion = powerAssertion
 	c.state = StateConnected
 	c.connectedAt = time.Now()
 	c.mu.Unlock()
+	if oldPowerAssertion != nil {
+		oldPowerAssertion.Stop()
+	}
 
 	c.log("VPN connected! Assigned IP: %s", c.assignedIP)
 	c.emitEvent(EventConnected, nil, nil)
@@ -598,8 +610,10 @@ func (c *Client) handleReconnect(config ConnectConfig) {
 	// Capture references before unlocking
 	tunnel := c.tunnelClient
 	wg := c.wgBackend
+	powerAssertion := c.powerAssertion
 	c.tunnelClient = nil
 	c.wgBackend = nil
+	c.powerAssertion = nil
 	c.mu.Unlock()
 
 	c.emitEvent(EventReconnecting, nil, nil)
@@ -610,6 +624,9 @@ func (c *Client) handleReconnect(config ConnectConfig) {
 	}
 	if wg != nil {
 		wg.Close()
+	}
+	if powerAssertion != nil {
+		powerAssertion.Stop()
 	}
 
 	interval := config.ReconnectInterval

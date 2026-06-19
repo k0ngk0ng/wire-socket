@@ -136,6 +136,7 @@ temp/
 !client/mobile/ios/**/*.plist
 # Except Tauri desktop configuration/icons
 !client/frontend/src-tauri/entitlements.plist
+!client/frontend/src-tauri/Info.plist
 !client/frontend/src-tauri/icons/android/**/*.xml
 
 # Certificates and keys (security)

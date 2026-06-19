@@ -15,7 +15,7 @@
     "build:mac:dmg": "npm run prepare && tauri build --bundles dmg",
     "build:win": "npm run prepare && tauri build --bundles nsis",
     "build:linux": "npm run prepare && tauri build --bundles appimage,deb,rpm",
-    "build:ci:mac": "tauri build --target universal-apple-darwin --bundles app --ci",
+    "build:ci:mac": "tauri build --target universal-apple-darwin --bundles app,dmg --ci",
     "build:ci:win": "tauri build --bundles nsis --ci",
     "build:ci:linux": "tauri build --bundles appimage,deb,rpm --ci",
     "tauri": "tauri"

@@ -337,6 +337,8 @@ func main() {
 		Description:      "Manages VPN connections with WireGuard and WebSocket tunneling",
 		WorkingDirectory: exeDir, // Set working directory for service (needed for wintun.dll)
 		Option: service.KeyValue{
+			// macOS launchd: keep the service alive while the GUI is hidden.
+			"KeepAlive": true,
 			// macOS launchd: start service at system boot
 			"RunAtLoad": true,
 			// Windows: start automatically

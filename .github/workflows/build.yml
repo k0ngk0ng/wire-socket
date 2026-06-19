@@ -21,10 +21,10 @@ jobs:
             suffix: linux-arm64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: false  # Disable cache to ensure fresh build
@@ -52,13 +52,13 @@ jobs:
             go build -ldflags="-s -w -X main.Version=$VERSION" -o wsctl-${{ matrix.suffix }} ./cmd/wsctl
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: server-${{ matrix.suffix }}
           path: server/wire-socket-server-${{ matrix.suffix }}
 
       - name: Upload wsctl artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wsctl-${{ matrix.suffix }}
           path: server/wsctl-${{ matrix.suffix }}
@@ -67,18 +67,18 @@ jobs:
   build-client-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: false  # Disable cache to ensure fresh build with local SDK
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: client/frontend/package-lock.json
 
@@ -138,10 +138,12 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent WireSocket.app "$GITHUB_WORKSPACE/WireSocket_${VERSION}_macos_universal.zip"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: client-macos
-          path: WireSocket_${{ steps.version.outputs.version }}_macos_universal.zip
+          path: |
+            WireSocket_${{ steps.version.outputs.version }}_macos_universal.zip
+            client/frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
 
   # Build client CLI for Linux (headless, no GUI)
   build-client-linux-cli:
@@ -155,10 +157,10 @@ jobs:
             suffix: linux-arm64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: false  # Disable cache to ensure fresh build with local SDK
@@ -180,7 +182,7 @@ jobs:
             -o wire-socket-client-${{ matrix.suffix }} ./cmd/client
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: client-linux-cli-${{ matrix.suffix }}
           path: client/backend/wire-socket-client-${{ matrix.suffix }}
@@ -189,7 +191,7 @@ jobs:
   build-client-linux-desktop:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Tauri system dependencies
         run: |
@@ -208,15 +210,15 @@ jobs:
             wget
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: client/frontend/package-lock.json
 
@@ -270,7 +272,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: client-linux-desktop
           path: |
@@ -282,18 +284,18 @@ jobs:
   build-client-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: false  # Disable cache to ensure fresh build with local SDK
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: client/frontend/package-lock.json
 
@@ -354,7 +356,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: client-windows
           path: client/frontend/src-tauri/target/release/bundle/nsis/*.exe
@@ -369,7 +371,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -391,7 +393,7 @@ jobs:
           ls -la release/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: release/*
           generate_release_notes: true

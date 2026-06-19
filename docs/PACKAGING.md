@@ -4,7 +4,7 @@
 
 ## 前置要求
 
-1. Node.js 18+
+1. Node.js 24+
    ```bash
    node --version
    npm --version
@@ -50,7 +50,7 @@ npm run build:linux
 
 Tauri 桌面应用通常需要在目标操作系统上打包。GitHub Actions 会分别在 macOS、Windows、Linux runner 上构建对应安装包。
 
-macOS 默认构建 `.app`，CI 会将 `.app` 压缩为 zip 发布。`npm run build:mac:dmg` 可在本机 GUI 会话中尝试构建 DMG；该步骤依赖 Finder AppleScript，在 headless/自动化环境中不稳定。
+macOS 本机构建默认产出 `.app`，也可以运行 `npm run build:mac:dmg` 只构建 DMG。CI 会在 macOS runner 上同时构建 universal `.app` 和 DMG，并将 `.app` 压缩为 zip 一起发布。
 
 构建产物位于 `client/frontend/src-tauri/target/release/bundle/`。
 

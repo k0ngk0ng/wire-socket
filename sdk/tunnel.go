@@ -12,11 +12,12 @@ import (
 
 const (
 	// Tunnel constants
-	tunnelBufferSize   = 65535
-	tunnelTimeout      = 30 * time.Second
-	tunnelPingInterval = 30 * time.Second
-	tunnelPongTimeout  = 10 * time.Second
-	tunnelReadTimeout  = 45 * time.Second
+	tunnelBufferSize      = 65535
+	tunnelTimeout         = 30 * time.Second
+	tunnelPingInterval    = 30 * time.Second
+	tunnelPongTimeout     = 10 * time.Second
+	tunnelReadTimeout     = 45 * time.Second
+	tunnelMissedPongLimit = 2
 )
 
 // tunnelClient handles WebSocket-UDP tunnel with keepalive support
@@ -94,6 +95,40 @@ func (t *tunnelClient) writeControl(conn *websocket.Conn, messageType int, data 
 	err := conn.WriteControl(messageType, data, deadline)
 	conn.SetWriteDeadline(time.Time{})
 	return err
+}
+
+func (t *tunnelClient) writeMessage(conn *websocket.Conn, messageType int, data []byte, deadline time.Time) error {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	t.connMu.RLock()
+	currentConn := t.conn
+	t.connMu.RUnlock()
+	if currentConn != conn {
+		return nil
+	}
+
+	conn.SetWriteDeadline(deadline)
+	err := conn.WriteMessage(messageType, data)
+	conn.SetWriteDeadline(time.Time{})
+	return err
+}
+
+func (t *tunnelClient) markConnectionLost(conn *websocket.Conn, format string, args ...interface{}) {
+	if format != "" {
+		log.Printf(format, args...)
+	}
+
+	t.connMu.Lock()
+	if t.conn == conn {
+		_ = t.conn.Close()
+		t.conn = nil
+	}
+	t.connMu.Unlock()
+
+	t.mu.Lock()
+	t.running = false
+	t.mu.Unlock()
 }
 
 func (t *tunnelClient) connectWebSocket() error {
@@ -204,12 +239,10 @@ func (t *tunnelClient) forwardUDPToWS(clientMap map[string]*net.UDPAddr, mu *syn
 		t.connMu.RUnlock()
 
 		if conn != nil {
-			t.writeMu.Lock()
-			err := conn.WriteMessage(websocket.BinaryMessage, buf[:n])
-			t.writeMu.Unlock()
+			err := t.writeMessage(conn, websocket.BinaryMessage, buf[:n], time.Now().Add(tunnelPongTimeout))
 			if err != nil {
-				log.Printf("WebSocket write error: %v", err)
-				time.Sleep(100 * time.Millisecond)
+				t.markConnectionLost(conn, "WebSocket write error: %v", err)
+				return
 			}
 		}
 	}
@@ -272,6 +305,7 @@ func (t *tunnelClient) forwardWSToUDP(clientMap map[string]*net.UDPAddr, mu *syn
 					log.Printf("WebSocket read error: %v", err)
 				}
 				// Connection error, exit and let reconnect handle it
+				t.markConnectionLost(conn, "")
 				return
 			}
 		}
@@ -294,6 +328,8 @@ func (t *tunnelClient) forwardWSToUDP(clientMap map[string]*net.UDPAddr, mu *syn
 func (t *tunnelClient) pingLoop() {
 	ticker := time.NewTicker(tunnelPingInterval)
 	defer ticker.Stop()
+	var lastPing time.Time
+	missedPongs := 0
 
 	for {
 		select {
@@ -309,29 +345,28 @@ func (t *tunnelClient) pingLoop() {
 				continue
 			}
 
-			// Check if we received pong recently
-			timeSinceLastPong := time.Since(lastPong)
-			if timeSinceLastPong > tunnelPingInterval+tunnelPongTimeout {
-				log.Printf("No pong received for %v, connection may be dead", timeSinceLastPong)
-				t.connMu.Lock()
-				if t.conn != nil {
-					t.conn.Close()
-					t.conn = nil
+			now := time.Now()
+			if !lastPing.IsZero() && lastPong.Before(lastPing) && now.Sub(lastPing) > tunnelPongTimeout {
+				missedPongs++
+				if missedPongs >= tunnelMissedPongLimit {
+					t.markConnectionLost(conn, "No pong received after %d ping attempts, connection may be dead", missedPongs)
+					return
 				}
-				t.connMu.Unlock()
-
-				// Mark as not running - connectionMonitor will handle reconnect
-				t.mu.Lock()
-				t.running = false
-				t.mu.Unlock()
-				return
+			} else {
+				missedPongs = 0
 			}
 
-			// Send ping
-			deadline := time.Now().Add(tunnelPongTimeout)
+			deadline := now.Add(tunnelPongTimeout)
 			if err := t.writeControl(conn, websocket.PingMessage, []byte{}, deadline); err != nil {
+				missedPongs++
+				if missedPongs >= tunnelMissedPongLimit {
+					t.markConnectionLost(conn, "Failed to send ping after %d attempts: %v", missedPongs, err)
+					return
+				}
 				log.Printf("Failed to send ping: %v", err)
+				continue
 			}
+			lastPing = now
 		}
 	}
 }

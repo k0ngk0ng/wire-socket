@@ -60,6 +60,7 @@ frontend/
 - `npm run build`: 构建当前平台安装包
 - `npm run build:mac`: 在 macOS 上构建 `.app`
 - `npm run build:mac:dmg`: 在 macOS GUI 会话中构建 DMG
+- `npm run build:ci:mac`: 在 CI 上构建 universal `.app` 和 DMG
 - `npm run build:win`: 在 Windows 上构建 NSIS 安装包
 - `npm run build:linux`: 在 Linux 上构建 AppImage/deb/rpm
 - `npm run tauri -- <command>`: 直接运行 Tauri CLI

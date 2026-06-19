@@ -37,3 +37,11 @@ if (fs.existsSync(cargoFile)) {
     .replace(/^version = "[^"]+"/m, `version = "${version}"`);
   fs.writeFileSync(cargoFile, cargo);
 }
+
+const indexFile = 'public/index.html';
+if (fs.existsSync(indexFile)) {
+  const html = fs
+    .readFileSync(indexFile, 'utf8')
+    .replace(/WireSocket \d+\.\d+\.\d+/g, `WireSocket ${version}`);
+  fs.writeFileSync(indexFile, html);
+}

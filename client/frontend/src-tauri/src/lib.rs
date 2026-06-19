@@ -61,6 +61,23 @@ fn platform_dir() -> &'static str {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn disable_macos_app_nap() {
+    use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+
+    let reason = NSString::from_str("Keep WireSocket VPN available while hidden in the menu bar");
+    let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep
+            | NSActivityOptions::AutomaticTerminationDisabled
+            | NSActivityOptions::SuddenTerminationDisabled,
+        &reason,
+    );
+    std::mem::forget(activity);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn disable_macos_app_nap() {}
+
 fn backend_binary_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "wire-socket-client.exe"
@@ -675,6 +692,8 @@ async fn sso_connect_with_token(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    disable_macos_app_nap();
+
     let mut builder = tauri::Builder::default();
 
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]

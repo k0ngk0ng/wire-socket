@@ -554,7 +554,7 @@
     }
   </style>
 </head>
-<body>
+<body autocapitalize="none" autocorrect="off" spellcheck="false">
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -586,7 +586,7 @@
       </nav>
 
       <div class="sidebar-footer">
-        WireSocket 0.10.3
+        WireSocket 0.10.4
       </div>
     </aside>
 
@@ -611,15 +611,15 @@
             <div class="form-grid">
               <div class="form-row">
                 <label class="form-label" for="serverAddress">Server Address</label>
-                <div class="field-cell"><input type="text" id="serverAddress" placeholder="vpn.example.com" onblur="checkSSOProviders()"></div>
+                <div class="field-cell"><input type="text" id="serverAddress" placeholder="vpn.example.com" autocapitalize="none" autocorrect="off" spellcheck="false" onblur="checkSSOProviders()"></div>
               </div>
               <div class="form-row">
                 <label class="form-label" for="username">Username</label>
-                <div class="field-cell"><input type="text" id="username" placeholder="Username"></div>
+                <div class="field-cell"><input type="text" id="username" placeholder="Username" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
               </div>
               <div class="form-row">
                 <label class="form-label" for="password">Password</label>
-                <div class="field-cell"><input type="password" id="password" placeholder="Password"></div>
+                <div class="field-cell"><input type="password" id="password" placeholder="Password" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
               </div>
             </div>
 
@@ -634,7 +634,7 @@
             </label>
 
             <div class="button-row">
-              <button class="button primary" id="connectBtn" onclick="connect()">Connect</button>
+              <button class="button primary" id="connectBtn">Connect</button>
             </div>
             <div id="errorMessage" class="message error"></div>
           </div>
@@ -693,7 +693,7 @@
           <div class="section-header">Route Selection</div>
           <div class="section-body">
             <div class="toolbar">
-              <input type="text" id="routeSearch" placeholder="Search CIDR" oninput="filterRoutes()">
+              <input type="text" id="routeSearch" placeholder="Search CIDR" autocapitalize="none" autocorrect="off" spellcheck="false" oninput="filterRoutes()">
               <button class="button" onclick="loadRouteSettings()">Refresh</button>
             </div>
             <div id="routeList" class="route-list">
@@ -718,15 +718,15 @@
             <div class="form-grid">
               <div class="form-row">
                 <label class="form-label" for="currentPassword">Current Password</label>
-                <div class="field-cell"><input type="password" id="currentPassword" placeholder="Current password"></div>
+                <div class="field-cell"><input type="password" id="currentPassword" placeholder="Current password" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
               </div>
               <div class="form-row">
                 <label class="form-label" for="newPassword">New Password</label>
-                <div class="field-cell"><input type="password" id="newPassword" placeholder="At least 8 characters"></div>
+                <div class="field-cell"><input type="password" id="newPassword" placeholder="At least 8 characters" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
               </div>
               <div class="form-row">
                 <label class="form-label" for="confirmPassword">Confirm Password</label>
-                <div class="field-cell"><input type="password" id="confirmPassword" placeholder="Confirm new password"></div>
+                <div class="field-cell"><input type="password" id="confirmPassword" placeholder="Confirm new password" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
               </div>
             </div>
             <div class="button-row">
@@ -744,6 +744,43 @@
     const tauri = window.__TAURI__;
     const invoke = tauri?.core?.invoke;
     const listen = tauri?.event?.listen;
+    const TEXT_INPUT_SELECTOR = 'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]), textarea, [contenteditable="true"]';
+
+    function disableTextInputAssistance(root = document) {
+      const elements = [];
+      if (root.matches?.(TEXT_INPUT_SELECTOR)) elements.push(root);
+      root.querySelectorAll?.(TEXT_INPUT_SELECTOR).forEach(element => elements.push(element));
+      elements.forEach(element => {
+        element.setAttribute('autocapitalize', 'none');
+        element.setAttribute('autocorrect', 'off');
+        element.setAttribute('spellcheck', 'false');
+      });
+    }
+
+    disableTextInputAssistance();
+    new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
+        mutation.addedNodes.forEach(node => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            disableTextInputAssistance(node);
+          }
+        });
+      });
+    }).observe(document.body, { childList: true, subtree: true });
+
+    function safeListen(eventName, callback) {
+      if (typeof listen !== 'function') return () => {};
+      try {
+        const unlisten = listen(eventName, event => callback(event.payload));
+        if (unlisten && typeof unlisten.catch === 'function') {
+          unlisten.catch(error => console.warn(`Failed to listen for ${eventName}:`, error));
+        }
+        return unlisten;
+      } catch (error) {
+        console.warn(`Failed to listen for ${eventName}:`, error);
+        return () => {};
+      }
+    }
 
     const nativeAPI = invoke ? {
       connect: (credentials) => invoke('connect', { credentials }),
@@ -751,7 +788,7 @@
       getStatus: () => invoke('get_status'),
       checkService: () => invoke('check_service'),
       updateTrayStatus: (isConnected) => invoke('update_tray_status', { isConnected }),
-      onServiceStatus: (callback) => listen('service-status', event => callback(event.payload)),
+      onServiceStatus: (callback) => safeListen('service-status', callback),
       activateDevTools: () => invoke('activate_dev_tools'),
       getRouteSettings: () => invoke('get_route_settings'),
       updateRouteSettings: (excludedRoutes) => invoke('update_route_settings', { excludedRoutes }),
@@ -760,7 +797,7 @@
       ssoGetProviders: (serverAddress) => invoke('sso_get_providers', { serverAddress }),
       ssoLogin: (serverAddress, providerId) => invoke('sso_login', { serverAddress, providerId }),
       ssoConnectWithToken: (serverAddress, token) => invoke('sso_connect_with_token', { serverAddress, token }),
-      onSSOCallback: (callback) => listen('sso-callback', event => callback(event.payload)),
+      onSSOCallback: (callback) => safeListen('sso-callback', callback),
     } : {
       connect: (credentials) => fetchJson('/api/connect', { method: 'POST', body: credentials }),
       disconnect: () => fetchJson('/api/disconnect', { method: 'POST', body: {} }),
@@ -1356,6 +1393,8 @@
         showMessage(errorMessage, 'SSO login failed: ' + result.error, 'error');
       }
     });
+
+    connectBtn.addEventListener('click', connect);
 
     waitForBackend();
   </script>
